@@ -1,25 +1,36 @@
 # pyxa_scverse_demo
 
-Demo notebook showing how to read Pyxa (Stellaromics/Meteor-APA pipeline)
-analysis-group output into a [SpatialData](https://spatialdata.scverse.org/)
-object, using the experimental `pyxa` reader from
-[spatialdata-io](https://github.com/scverse/spatialdata-io) (currently on a
-[fork branch](https://github.com/ckmah/spatialdata-io/tree/pyxa-reader)
-pending upstream review).
+Jupyter notebook showing how to read Stellaromics Pyxa output into a
+[SpatialData](https://spatialdata.scverse.org/) object with the experimental
+`pyxa` reader from [spatialdata-io](https://github.com/scverse/spatialdata-io),
+and browse it one z-plane at a time.
 
-The notebook streams a full (non-subsampled) demo dataset from
-[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) on
-the Hugging Face Hub via the `hf://` fsspec filesystem, builds the
-`SpatialData` object, and plots the transcripts and segmentation shapes.
+It uses the `xsmall` crop (100 × 100 × 100 µm) of the
+[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset.
 
-## Running
+## Setup
 
-The notebook is a [marimo](https://marimo.io) notebook with inline
-dependencies (PEP 723), runnable directly with [uv](https://docs.astral.sh/uv/):
+The reader lives on the `pyxa-reader` branch of spatialdata-io, pending
+upstream review, so until it is pushed the project installs it editable from a
+sibling checkout:
 
-```bash
-uv run demo_pyxa_hf.py
+```
+spatialdata-io/        # pyxa-reader branch
+pyxa_scverse_demo/     # this project
 ```
 
-This opens the notebook in your browser; no separate environment setup is
-needed.
+Then install and open the notebook with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+uv run jupyter lab demo_pyxa.ipynb
+```
+
+## Notebook
+
+1. **Get the data**: downloads `xsmall/` from the Hub via fsspec's `hf://`
+   filesystem into `data/` and extracts the zipped OME-Zarr DAPI mosaic.
+2. **Convert**: reads it with `pyxa(...)` and writes SpatialData Zarr to
+   `data/xsmall.zarr`.
+3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
+   that plane and the transcripts within half a plane of it drawn on top.

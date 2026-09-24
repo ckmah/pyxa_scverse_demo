@@ -1,0 +1,22 @@
+[project]
+name = "pyxa-scverse-demo"
+version = "0.1.0"
+description = "Read Stellaromics Pyxa output into SpatialData and browse it by z-plane"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "spatialdata-io",
+    "fsspec",
+    "huggingface-hub",
+    "matplotlib",
+    "ipywidgets",
+    "ipykernel",
+    "jupyterlab",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# the pyxa reader is on the pyxa-reader branch, pending upstream review; use a local checkout until it is pushed
+spatialdata-io = { path = "../spatialdata-io", editable = true }
