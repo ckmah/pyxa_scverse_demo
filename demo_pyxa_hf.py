@@ -37,13 +37,14 @@ def _():
 @app.cell
 def _():
     import tempfile
+    import zipfile
     from pathlib import Path
 
     import fsspec
 
     from spatialdata_io.experimental import pyxa
 
-    return Path, fsspec, pyxa, tempfile
+    return Path, fsspec, pyxa, tempfile, zipfile
 
 
 @app.cell
@@ -67,7 +68,28 @@ def _(Path, fsspec, tempfile):
         fs.get(remote_path, str(local_dir / Path(remote_path).name))
 
     sorted(p.name for p in local_dir.iterdir())
-    return (local_dir,)
+    return fs, local_dir, remote_dir
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ## Download and extract the DAPI mosaic (OME-Zarr, zipped)
+    """)
+    return
+
+
+@app.cell
+def _(fs, local_dir, remote_dir, zipfile):
+    zip_path = local_dir / "mosaic_3d.ome.zarr.zip"
+    fs.get(f"{remote_dir}/mosaic_3d.ome.zarr.zip", str(zip_path))
+
+    with zipfile.ZipFile(zip_path) as zf:
+        zf.extractall(local_dir)
+
+    image_path = local_dir / "mosaic_3d.ome.zarr"
+    image_path
+    return (image_path,)
 
 
 @app.cell
@@ -79,12 +101,13 @@ def _(mo):
 
 
 @app.cell
-def _(local_dir, pyxa):
-    sdata = pyxa(local_dir)
+def _(image_path, local_dir, pyxa):
+    sdata = pyxa(local_dir, image_path=image_path)
     {
         "transcripts": len(sdata["transcripts"]),
         "cell_shapes": len(sdata["cell_shapes"]),
         "rna": sdata["rna"].shape,
+        "mosaic_image": sdata["mosaic_image"].shape,
     }
     return (sdata,)
 
@@ -112,12 +135,49 @@ def _(sdata):
     )
     fig.tight_layout()
     fig
-    return
+    return (plt,)
 
 
 @app.cell
 def _(sdata):
     sdata["rna"]
+    return
+
+
+@app.cell
+def _(mo, sdata):
+    mo.md("""
+    ## DAPI mosaic, scroll through z-planes
+    """)
+
+    z_coords = sdata["mosaic_image"].coords["z"].values
+    z_slider = mo.ui.slider(
+        start=0,
+        stop=len(z_coords) - 1,
+        step=1,
+        value=len(z_coords) // 2,
+        label="z-plane index",
+        show_value=True,
+    )
+    return z_coords, z_slider
+
+
+@app.cell
+def _(z_slider):
+    z_slider
+    return
+
+
+@app.cell
+def _(plt, sdata, z_coords, z_slider):
+    z_index = z_slider.value
+    plane = sdata["mosaic_image"].isel(c=0, z=z_index)
+
+    fig_z, ax_z = plt.subplots(figsize=(8, 6))
+    ax_z.imshow(plane.values, cmap="gray")
+    ax_z.set_title(f"DAPI, z={z_index} (z={z_coords[z_index]:.2f} um)")
+    ax_z.axis("off")
+    fig_z
     return
 
 
