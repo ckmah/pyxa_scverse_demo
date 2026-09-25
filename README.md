@@ -38,21 +38,21 @@ uv run jupyter lab demo_pyxa.ipynb
 ## Colon A2: clusters → 3D nuclei (`colon_a2.py`)
 
 A [marimo](https://marimo.io) notebook on a full Region: Glasgow colon H1K,
-Run01 / Analysis02 / A2 (local Pyxa output, not public). Cells are colored by
-Pyxa Studio `Cluster` in a spatial-rx `LandmarksWidget`. **Inspect** on the
-tissue picks a 500 µm window; a `VolumeCubeWidget`, floating in a wigglystuff
-`FloatingPanel`, loads it from Meteor's 3D DAPI mosaic over the full ~142 µm
-stack. The cube's own controls tilt it from top-down to side-on, switch
-additive / maximum-intensity rendering, show segmented cells (**Labels**) and
-cut it in X, Y and Z. Focusing a cluster in the map's legend, or a Selection,
-fills those cells in the cube in their map colours. A table breaks down the
-clusters inside the cut.
+Run01 / Analysis02 / A2 (local Pyxa output, not public). The notebook is one
+widget, `LandmarksWidget(sdata)`: from the SpatialData it finds the cell table,
+the 3D cell labels it annotates and the 3D nuclear image on the same grid.
+Cells are colored by Pyxa Studio `Cluster`. **Inspect** (`I`, then click the
+tissue) opens a floating cube of that 500 µm window over the full ~142 µm
+stack; its controls (tilt, additive / maximum-intensity rendering, **Labels**,
+X / Y / Z cuts, contrast) sit in the map's toolbar. A table counts the clusters
+inside the cube: the inspect window within the cut box (`landmarks.volume_cut`).
 
-It needs spatial-rx with windowed cube loading (not released yet), installed editable from a sibling checkout
-(`../spatial-rx`), with its widget bundles built, and the `pyxa` reader with
-optional inputs from the sibling `spatialdata-io` checkout.
+It needs spatial-rx with the Landmarks inspect cube (not released yet),
+installed editable from a sibling checkout (`../spatial-rx`), with its widget
+bundles built, and the `pyxa` reader with optional inputs from the sibling
+`spatialdata-io` checkout.
 
-1. **Build** `data/colon_a2.sdata.zarr` (about 1.8 GB, 4 min on 60 workers):
+1. **Build** `data/colon_a2.sdata.zarr` (about 13 GB, 12 GB of it the mosaic):
    - `tables/rna` from the `pyxa` reader: counts and cell metadata (required)
      plus `pyxa_studio_v1.csv` for `Cluster` and the 3D UMAP, keeping the cells
      Pyxa Studio kept, in Pyxa µm. Transcripts are skipped (7.7 GB).
@@ -60,10 +60,13 @@ optional inputs from the sibling `spatialdata-io` checkout.
      onto the 3D mosaic's level-0 voxel grid as a `Labels3DModel` (`uint32`,
      label = the `N` of `Region_N`), with the mosaic's transform and pyramid.
      The table annotates it through `label_id`.
+   - `images/mosaic`: Meteor's `Region/mosaic/mosaic_3d.ome.zarr` (DAPI,
+     `uint8`) copied level by level as an `Image3DModel` with the labels'
+     transform, in `(1, 32, 256, 256)` chunks (about 90 s).
 
-   The mosaic is not copied: the notebook reads
-   `Region/mosaic/mosaic_3d.ome.zarr` in place, which shares the same grid.
-   `--no-labels` builds the table alone in about 30 s.
+   `--no-mosaic` skips the image, `--no-labels` the labels (table alone in
+   about 30 s), and `--only-mosaic` adds the image to an existing build
+   without re-rasterizing the labels.
 
    ```bash
    uv run python build_colon_a2.py --overwrite --source "/path/to/A2/Analysis Group"
@@ -75,7 +78,6 @@ optional inputs from the sibling `spatialdata-io` checkout.
    uv run marimo edit colon_a2.py
    ```
 
-Landmarks packs all 1,020 genes for the gene picker (about 216 MB for 358k
-cells), so the map takes about 45 s to appear. Mosaics written by Meteor with
-256x256 store chunks read about 34 MB per inspect window; older
-1024x1024-chunk mosaics still work but read about 145 MB.
+Landmarks packs all 1,020 genes for the gene picker (about 1.4 GB for 358k
+cells, with a warning), so the map takes about 45 s to appear. The cube reads only the
+256×256×32 chunks its window covers.

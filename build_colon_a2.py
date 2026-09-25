@@ -14,14 +14,19 @@ Writes ``data/colon_a2.sdata.zarr`` (``data/`` is not committed) with:
 - ``labels/cell_labels`` — the segmentation polygons rasterized onto the 3D
   mosaic's level-0 voxel grid (``uint32``, 0 = background), with the mosaic's
   transform and pyramid shapes, so the cube cuts the same window from both.
+- ``images/mosaic`` — Meteor's 3D nuclear stain (``Region/mosaic/mosaic_3d.ome.zarr``,
+  ``c, z, y, x``, ``uint8``), copied level by level (no pyramid recomputed) with
+  the same level-0 transform as the labels, so ``LandmarksWidget(sdata)`` finds
+  image and labels on one grid.
 
-The 3D nuclear image is not copied. The notebook reads Meteor's own
-``Region/mosaic/mosaic_3d.ome.zarr`` (path in ``uns["pyxa"]["mosaic_3d"]``),
-which is georeferenced in the same um frame and sharded into 256x256 chunks, so
-the cube loads only the inspect window.
+``SpatialData.write_element`` (spatialdata 0.8) takes no storage options, so the
+mosaic is written with plain ``(1, 32, 256, 256)`` chunks, not sharded: a 500 um
+inspect window still reads only the chunks it covers.
 
     uv run python build_colon_a2.py --overwrite
-    uv run python build_colon_a2.py --overwrite --no-labels   # table only, ~30 s
+    uv run python build_colon_a2.py --overwrite --no-mosaic   # table + labels only
+    uv run python build_colon_a2.py --overwrite --no-labels --no-mosaic   # table only, ~30 s
+    uv run python build_colon_a2.py --only-mosaic   # add the mosaic to an existing build
 """
 
 from __future__ import annotations
@@ -44,8 +49,8 @@ import shapely
 import zarr
 from PIL import Image, ImageDraw
 from scipy import sparse
-from spatialdata import SpatialData
-from spatialdata.models import Labels3DModel, TableModel
+from spatialdata import SpatialData, read_zarr
+from spatialdata.models import Image3DModel, Labels3DModel, TableModel
 from spatialdata.transformations import Scale, Sequence, Translation, set_transformation
 from spatialdata_io.experimental import pyxa
 from xarray import DataArray, Dataset, DataTree
@@ -57,10 +62,12 @@ OUT = Path(__file__).resolve().parent / "data" / "colon_a2.sdata.zarr"
 MOSAIC_3D = Path("Region") / "mosaic" / "mosaic_3d.ome.zarr"
 GEOMETRIES = Path("ag_output") / "segmentation_geometries_v1.parquet"
 LABELS = "cell_labels"
+MOSAIC = "mosaic"
 CELL_PREFIX = "Region_"
 
 # Store chunks match the mosaic's viewer chunks, so a 100 um window reads a few MB.
 STORE_CHUNKS = (32, 256, 256)
+MOSAIC_CHUNKS = (1, *STORE_CHUNKS)
 # One rasterization task: a whole number of store chunks, so tasks never share one.
 TILE = (32, 1024, 1024)
 # Polygons are traced on the ~0.11 um pixel grid; at the ~0.45 um mosaic voxel their
@@ -255,6 +262,54 @@ def labels_element(store: Path, grid: dict[str, Any]) -> DataTree:
     return tree
 
 
+def mosaic_element(source: Path) -> DataTree:
+    """Meteor's 3D mosaic as a multiscale image on the labels' grid, levels as stored."""
+    mosaic = source / MOSAIC_3D
+    grid = mosaic_grid(mosaic)
+    group = zarr.open_group(str(mosaic), mode="r")
+    datasets = group.attrs["ome"]["multiscales"][0]["datasets"]
+    # Read whole shards per task (then split into store chunks); drop t.
+    raw = [group[d["path"]] for d in datasets]
+    levels = [da.from_zarr(a, chunks=a.shards or a.chunks)[0] for a in raw]
+    transform = Sequence(
+        [Scale(grid["scale"], axes=("z", "y", "x")), Translation(grid["translation"], axes=("z", "y", "x"))]
+    )
+    image0 = Image3DModel.parse(
+        levels[0],
+        dims=("c", "z", "y", "x"),
+        scale_factors=None,
+        chunks=MOSAIC_CHUNKS,
+        transformations={"global": transform},
+    )
+    n0 = grid["shapes"][0]
+    tree = {"scale0": Dataset({"image": image0})}
+    for i, level in enumerate(levels[1:], start=1):
+        shape = level.shape[1:]
+        array = level.rechunk(tuple(min(c, s) for c, s in zip(MOSAIC_CHUNKS, level.shape, strict=True)))
+        # Coordinates are pixel centres in level-0 units, as spatialdata assigns them.
+        coords = {ax: np.linspace(0, a, b + 1)[:-1] + a / b / 2 for ax, a, b in zip("zyx", n0, shape, strict=True)}
+        coords["c"] = image0.coords["c"].values
+        tree[f"scale{i}"] = Dataset({"image": DataArray(array, dims=("c", "z", "y", "x"), coords=coords)})
+    tree = DataTree.from_dict(tree)
+    set_transformation(tree, {"global": transform}, set_all=True)
+    Image3DModel.validate(tree)
+    return tree
+
+
+def write_mosaic(sdata: SpatialData, source: Path, *, overwrite: bool) -> None:
+    """Add ``images/mosaic`` to the store backing ``sdata``."""
+    t0 = time.perf_counter()
+    # Replace any copy read from the store first, so none is backed by the path deleted below.
+    sdata.images[MOSAIC] = mosaic_element(source)
+    if f"images/{MOSAIC}" in sdata.elements_paths_on_disk():
+        if not overwrite:
+            raise SystemExit(f"images/{MOSAIC} is already in {sdata.path}: pass --overwrite to replace it")
+        # write_element cannot overwrite inside its own store.
+        sdata.delete_element_from_disk(MOSAIC)
+    sdata.write_element(MOSAIC)
+    print(f"wrote images/{MOSAIC} in {time.perf_counter() - t0:.0f} s", flush=True)
+
+
 def build(source: Path, *, labels: bool, workers: int, scratch: Path) -> SpatialData:
     """Cells Pyxa Studio kept, with their clusters, and optionally their 3D labels."""
     sdata = pyxa(
@@ -268,10 +323,7 @@ def build(source: Path, *, labels: bool, workers: int, scratch: Path) -> Spatial
     table = table[table.obs["Cluster"].notna()].copy()
     table.obs["Cluster"] = table.obs["Cluster"].cat.remove_unused_categories()
     table.X = sparse.csr_matrix(table.X, dtype=np.float32)
-    table.uns["pyxa"] = {
-        "analysis_group": str(source),
-        "mosaic_3d": str(source / MOSAIC_3D),
-    }
+    table.uns["pyxa"] = {"analysis_group": str(source)}
     if not labels:
         return SpatialData(tables={"rna": TableModel.parse(table)})
 
@@ -296,9 +348,24 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--no-labels", dest="labels", action="store_false", help="skip the 3D labels")
+    parser.add_argument("--no-mosaic", dest="mosaic", action="store_false", help="skip the 3D image")
+    parser.add_argument(
+        "--only-mosaic", action="store_true", help="write only images/mosaic into the existing --out store"
+    )
     # Windows caps a process pool at 61 workers.
     parser.add_argument("--workers", type=int, default=min(os.cpu_count() or 4, 60))
     args = parser.parse_args()
+
+    if args.only_mosaic:
+        sdata = read_zarr(args.out)
+        write_mosaic(sdata, args.source, overwrite=args.overwrite)
+        # Builds before the mosaic was in the SpatialData pointed the notebook at Meteor's
+        # store. write_element cannot overwrite the table in place, so drop that one key.
+        if "mosaic_3d" in sdata.tables["rna"].uns.get("pyxa", {}):
+            del zarr.open_group(str(args.out / "tables" / "rna" / "uns" / "pyxa"), mode="r+")["mosaic_3d"]
+            sdata.write_consolidated_metadata()
+        print(json.dumps({"out": str(args.out), "images": list(sdata.images), "labels": list(sdata.labels)}, indent=1))
+        return
 
     scratch = args.out.parent / "_labels_level0.zarr"
     sdata = build(args.source, labels=args.labels, workers=args.workers, scratch=scratch)
@@ -307,10 +374,18 @@ def main() -> None:
     sdata.write(args.out, overwrite=args.overwrite)
     print(f"wrote {args.out} in {time.perf_counter() - t0:.0f} s", flush=True)
     shutil.rmtree(scratch, ignore_errors=True)
+    if args.mosaic:
+        write_mosaic(sdata, args.source, overwrite=args.overwrite)
     table = sdata.tables["rna"]
     print(
         json.dumps(
-            {"out": str(args.out), "n_obs": table.n_obs, "n_vars": table.n_vars, "labels": list(sdata.labels)},
+            {
+                "out": str(args.out),
+                "n_obs": table.n_obs,
+                "n_vars": table.n_vars,
+                "labels": list(sdata.labels),
+                "images": list(sdata.images),
+            },
             indent=1,
         )
     )
