@@ -3,7 +3,8 @@
 Loads the SpatialData built by ``build_colon_a2.py`` into ``data/`` (not committed):
 the full-section cell table with Pyxa Studio cluster labels, in Pyxa µm, the 3D
 cell labels and Meteor's 3D nuclear mosaic on one voxel grid. ``LandmarksWidget(sdata)``
-finds all three; **Inspect** (``I``) opens a 500 µm cube of the mosaic.
+finds all three; **Inspect** (``I``) opens a cube of the mosaic, sized to the
+square (its size follows zoom).
 
     uv run python build_colon_a2.py --overwrite
     uv run marimo edit colon_a2.py
@@ -35,10 +36,11 @@ def _(mo):
     mo.md("""
     # Colon A2: clusters on the map, nuclei in 3D
 
-    Press **I** (Inspect) and click the tissue: a floating cube loads that 500 µm
+    Press **I** (Inspect) and click the tissue: a floating cube loads that
     window of Meteor's 3D nuclear stain over the full stack depth, with the
-    segmented cells. Its controls sit in the map's toolbar. The table counts the
-    clusters inside the cube (its window, cut by the X / Y / Z cuts).
+    segmented cells — the square (its size follows zoom). Its controls sit in
+    the map's toolbar. The table counts the clusters inside the cube (its
+    window, cut by the X / Y / Z cuts).
     """)
     return
 
@@ -54,7 +56,6 @@ def _(CLUSTER, LandmarksWidget, SDATA_PATH, mo, sd):
     )
     sdata = sd.read_zarr(SDATA_PATH)
     widget = LandmarksWidget(sdata, color=CLUSTER, contrast_limits=(40, 255))
-    widget.inspect_size_um = 500
     landmarks = mo.ui.anywidget(widget)
     landmarks
     return landmarks, sdata
