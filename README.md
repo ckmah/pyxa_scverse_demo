@@ -38,7 +38,9 @@ uv run jupyter lab demo_pyxa.ipynb
 ## Colon A2: scverse analysis, steered by landmarks (`colon_a2.py`)
 
 A [marimo](https://marimo.io) notebook on a full Region: Glasgow colon H1K,
-Run01 / Analysis02 / A2 (local Pyxa output, not public). The analysis is plain
+Run01 / Analysis02 / A2, published as the `colon/` folder of
+[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) (raw Pyxa
+output, ~30 GB; attribution on the dataset card). The analysis is plain
 scverse; `LandmarksWidget(sdata)` adds landmarks drawn on the tissue as
 per-cell coordinates for scanpy.
 
@@ -60,12 +62,19 @@ per-cell coordinates for scanpy.
 5. **In the cube**: cluster counts inside the inspect window within the cut
    box (`landmarks.volume_cut`).
 
-It needs spatial-rx with the Landmarks inspect cube (not released yet),
+It needs spatial-rx with the Landmarks inspect cube and `z_bin_size` measures
+(on `main`, not released yet),
 installed editable from a sibling checkout (`../spatial-rx`), with its widget
 bundles built, and the `pyxa` reader with optional inputs from the sibling
 `spatialdata-io` checkout.
 
-1. **Build** `data/colon_a2.sdata.zarr` (about 13 GB, 12 GB of it the mosaic):
+1. **Download** the region with `--download` (below): the counts, cell
+   metadata, Pyxa Studio export, segmentation polygons and zipped mosaic from
+   `colon/` into `data/hf/colon/` (about 22 GB; the 7.7 GB of transcripts stay
+   on the Hub), and the mosaic is unzipped next to them (12 GB).
+   `--source` also takes a Pyxa `Analysis Group` directory instead.
+
+2. **Build** `data/colon_a2.sdata.zarr` (about 13 GB, 12 GB of it the mosaic):
    - `tables/rna` from the `pyxa` reader: counts and cell metadata (required)
      plus `pyxa_studio_v1.csv` for `Cluster` and the 3D UMAP, keeping the cells
      Pyxa Studio kept, in Pyxa µm. Transcripts are skipped (7.7 GB).
@@ -73,7 +82,7 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
      onto the 3D mosaic's level-0 voxel grid as a `Labels3DModel` (`uint32`,
      label = the `N` of `Region_N`), with the mosaic's transform and pyramid.
      The table annotates it through `label_id`.
-   - `images/mosaic`: Meteor's `Region/mosaic/mosaic_3d.ome.zarr` (DAPI,
+   - `images/mosaic`: Meteor's `mosaic_3d.ome.zarr` (DAPI,
      `uint8`) copied level by level as an `Image3DModel` with the labels'
      transform, in `(1, 32, 256, 256)` chunks (about 90 s).
 
@@ -82,10 +91,10 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
    without re-rasterizing the labels.
 
    ```bash
-   uv run python build_colon_a2.py --overwrite --source "/path/to/A2/Analysis Group"
+   uv run python build_colon_a2.py --download --overwrite
    ```
 
-2. **Open** the notebook:
+3. **Open** the notebook:
 
    ```bash
    uv run marimo edit colon_a2.py

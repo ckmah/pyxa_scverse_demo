@@ -1,9 +1,16 @@
 """Build the Glasgow colon A2 SpatialData for ``colon_a2.py``.
 
-Reads one analysis group's Pyxa output (default: Run01 / Analysis02 / A2) with
-spatialdata-io's ``pyxa`` reader, from its required counts and cell metadata
-plus the optional Pyxa Studio export (``Cluster`` + 3D UMAP). Transcripts are
-skipped (7.7 GB on a full Region; the notebook does not use them).
+Reads the colon A2 region's Pyxa output with spatialdata-io's ``pyxa`` reader,
+from its required counts and cell metadata plus the optional Pyxa Studio export
+(``Cluster`` + 3D UMAP). Transcripts are skipped (7.7 GB; the notebook does not
+use them).
+
+``--download`` fetches the region from the ``colon/`` folder of the
+`Stellaromics/demo <https://huggingface.co/datasets/Stellaromics/demo>`_
+dataset into ``data/hf/colon/`` (about 22 GB without the transcripts, plus
+12 GB for the unzipped mosaic) and builds from there. ``--source`` takes either
+that flat layout or a Pyxa ``Analysis Group`` directory (``ag_output/``,
+``Region/mosaic/``).
 
 Writes ``data/colon_a2.sdata.zarr`` (``data/`` is not committed) with:
 
@@ -23,7 +30,7 @@ Writes ``data/colon_a2.sdata.zarr`` (``data/`` is not committed) with:
 mosaic is written with plain ``(1, 32, 256, 256)`` chunks, not sharded: a 500 um
 inspect window still reads only the chunks it covers.
 
-    uv run python build_colon_a2.py --overwrite
+    uv run python build_colon_a2.py --download --overwrite
     uv run python build_colon_a2.py --overwrite --no-mosaic   # table + labels only
     uv run python build_colon_a2.py --overwrite --no-labels --no-mosaic   # table only, ~30 s
     uv run python build_colon_a2.py --only-mosaic   # add the mosaic to an existing build
@@ -55,12 +62,21 @@ from spatialdata.transformations import Scale, Sequence, Translation, set_transf
 from spatialdata_io.experimental import pyxa
 from xarray import DataArray, Dataset, DataTree
 
-DEFAULT_SOURCE = Path(
-    r"D:/clarence/20260818_glasgow_colon_h1k/Run01/Pyxa_results/Analysis02/A2/Analysis Group"
-)
-OUT = Path(__file__).resolve().parent / "data" / "colon_a2.sdata.zarr"
-MOSAIC_3D = Path("Region") / "mosaic" / "mosaic_3d.ome.zarr"
-GEOMETRIES = Path("ag_output") / "segmentation_geometries_v1.parquet"
+DATA = Path(__file__).resolve().parent / "data"
+HF_REPO = "Stellaromics/demo"
+HF_FOLDER = "colon"
+DEFAULT_SOURCE = DATA / "hf" / HF_FOLDER
+OUT = DATA / "colon_a2.sdata.zarr"
+MOSAIC_3D = "mosaic_3d.ome.zarr"
+GEOMETRIES = "segmentation_geometries_v1.parquet"
+# What the build reads from the Hub; the transcripts (cell_assigned_gene_v1.csv) stay there.
+HF_FILES = [
+    "cell_by_gene_v1.csv",
+    "cell_metadata_v1.csv",
+    "pyxa_studio_v1.csv",
+    GEOMETRIES,
+    f"{MOSAIC_3D}.zip",
+]
 LABELS = "cell_labels"
 MOSAIC = "mosaic"
 CELL_PREFIX = "Region_"
@@ -73,6 +89,38 @@ TILE = (32, 1024, 1024)
 # Polygons are traced on the ~0.11 um pixel grid; at the ~0.45 um mosaic voxel their
 # staircase vertices add nothing, so they are simplified to a quarter voxel first.
 SIMPLIFY_VOXELS = 0.25
+
+
+def download(dest: Path = DEFAULT_SOURCE) -> Path:
+    """Fetch the colon region from the Hub into ``dest`` and unzip its mosaic."""
+    import zipfile
+
+    from huggingface_hub import snapshot_download
+
+    root = dest.parent
+    snapshot_download(
+        HF_REPO,
+        repo_type="dataset",
+        allow_patterns=[f"{HF_FOLDER}/{f}" for f in HF_FILES],
+        local_dir=root,
+    )
+    source = root / HF_FOLDER
+    if not (source / MOSAIC_3D).exists():
+        t0 = time.perf_counter()
+        zipfile.ZipFile(source / f"{MOSAIC_3D}.zip").extractall(source)
+        print(f"unzipped {MOSAIC_3D} in {time.perf_counter() - t0:.0f} s", flush=True)
+    return source
+
+
+def pyxa_paths(source: Path) -> tuple[Path, Path, Path]:
+    """Tables dir, 3D mosaic and segmentation geometries of a Pyxa output.
+
+    Either a Pyxa ``Analysis Group`` (``ag_output/``, ``Region/mosaic/``) or the
+    flat layout of the Hub's ``Stellaromics/demo`` folders.
+    """
+    if (source / "ag_output").is_dir():
+        return source / "ag_output", source / "Region" / "mosaic" / MOSAIC_3D, source / "ag_output" / GEOMETRIES
+    return source, source / MOSAIC_3D, source / GEOMETRIES
 
 
 def mosaic_grid(mosaic: Path) -> dict[str, Any]:
@@ -264,7 +312,7 @@ def labels_element(store: Path, grid: dict[str, Any]) -> DataTree:
 
 def mosaic_element(source: Path) -> DataTree:
     """Meteor's 3D mosaic as a multiscale image on the labels' grid, levels as stored."""
-    mosaic = source / MOSAIC_3D
+    _, mosaic, _ = pyxa_paths(source)
     grid = mosaic_grid(mosaic)
     group = zarr.open_group(str(mosaic), mode="r")
     datasets = group.attrs["ome"]["multiscales"][0]["datasets"]
@@ -312,8 +360,9 @@ def write_mosaic(sdata: SpatialData, source: Path, *, overwrite: bool) -> None:
 
 def build(source: Path, *, labels: bool, workers: int, scratch: Path) -> SpatialData:
     """Cells Pyxa Studio kept, with their clusters, and optionally their 3D labels."""
+    tables, mosaic, geometries = pyxa_paths(source)
     sdata = pyxa(
-        source / "ag_output",
+        tables,
         cell_assigned_gene=False,
         segmentation_geometries=False,
         pyxa_studio=True,
@@ -330,8 +379,8 @@ def build(source: Path, *, labels: bool, workers: int, scratch: Path) -> Spatial
     # Pixel and plane sizes of the polygons, from the cells' centroids in both units.
     xy_um = float(np.median(table.obsm["spatial"][:, 0] / table.obs["X_pixels"]))
     z_um = float(np.median(table.obsm["spatial"][:, 2] / table.obs["Z_pixels"]))
-    grid = mosaic_grid(source / MOSAIC_3D)
-    rasterize_labels(source / GEOMETRIES, grid, xy_um, z_um, scratch, workers)
+    grid = mosaic_grid(mosaic)
+    rasterize_labels(geometries, grid, xy_um, z_um, scratch, workers)
 
     table.obs["label_id"] = table.obs_names.str.slice(len(CELL_PREFIX)).astype(np.int64)
     table.obs["region"] = LABELS
@@ -343,7 +392,13 @@ def build(source: Path, *, labels: bool, workers: int, scratch: Path) -> Spatial
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--source", type=Path, default=DEFAULT_SOURCE, help="Pyxa 'Analysis Group' dir"
+        "--source",
+        type=Path,
+        default=DEFAULT_SOURCE,
+        help="Pyxa output: an 'Analysis Group' dir or a flat Hub folder (default: data/hf/colon)",
+    )
+    parser.add_argument(
+        "--download", action="store_true", help=f"fetch {HF_REPO}/{HF_FOLDER} into --source first"
     )
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--overwrite", action="store_true")
@@ -355,6 +410,8 @@ def main() -> None:
     # Windows caps a process pool at 61 workers.
     parser.add_argument("--workers", type=int, default=min(os.cpu_count() or 4, 60))
     args = parser.parse_args()
+    if args.download:
+        args.source = download(args.source)
 
     if args.only_mosaic:
         sdata = read_zarr(args.out)

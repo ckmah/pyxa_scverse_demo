@@ -1,6 +1,7 @@
 """Glasgow colon A2: scverse analysis of a Pyxa SpatialData, steered by landmarks.
 
-Loads the SpatialData built by ``build_colon_a2.py`` into ``data/`` (not committed):
+Loads the SpatialData that ``build_colon_a2.py`` builds into ``data/`` (not
+committed) from the ``colon/`` folder of the Stellaromics/demo dataset on Hugging Face:
 the full-section cell table with Pyxa Studio cluster labels, in Pyxa µm, the 3D
 cell labels and Meteor's 3D nuclear mosaic on one voxel grid. Scanpy normalizes
 the table and ranks cluster markers; ``LandmarksWidget(sdata)`` shows the clusters
@@ -8,7 +9,7 @@ on the map with the markers in its gene picker. Landmarks drawn there feed the
 ``spatial_rx`` measures (XY geometry, 1 µm z bins), whose columns go back into
 ``adata.obs`` for scanpy plots and differential expression.
 
-    uv run python build_colon_a2.py --overwrite
+    uv run python build_colon_a2.py --download --overwrite
     uv run marimo edit colon_a2.py
 """
 
@@ -96,8 +97,10 @@ def _(SDATA_PATH, mo, sd):
     mo.stop(
         not SDATA_PATH.exists(),
         mo.md(
-            f"`{SDATA_PATH}` not found. Build it first:\n\n"
-            "```bash\nuv run python build_colon_a2.py --overwrite\n```"
+            f"`{SDATA_PATH}` not found. Download the colon region from "
+            "[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo/tree/main/colon) "
+            "(about 22 GB, plus 12 GB unzipped) and build it:\n\n"
+            "```bash\nuv run python build_colon_a2.py --download --overwrite\n```"
         ),
     )
     sdata = sd.read_zarr(SDATA_PATH)
