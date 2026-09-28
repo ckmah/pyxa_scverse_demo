@@ -32,7 +32,6 @@ The demo's build script then reduces to that call and a write.
 pyxa(
     path=None,
     dataset_id="pyxa",
-    image_path=None,        # deprecated alias of image=; warns, removed later
     *,
     cell_by_gene=None,
     cell_metadata=None,
@@ -48,8 +47,9 @@ pyxa(
 - `image`: resolved like the other optional inputs. `None` reads
   `path / "mosaic_3d.ome.zarr"`, else `path / "mosaic_3d.ome.zarr.zip"`, when
   present, and skips it otherwise. `True` requires one of them. `False` skips.
-  A path reads that directory or `.zip`. Passing both `image` and
-  `image_path` raises `TypeError`.
+  A path reads that directory or `.zip`. `image_path` is removed outright
+  (no deprecation; #425 is still a draft with no users). `image` is
+  keyword-only.
 - `labels`: `True` rasterizes `labels["cell_labels"]` from the segmentation
   polygons onto the mosaic's grid. It needs both the geometries and the image;
   if either is missing it raises
@@ -141,8 +141,6 @@ processes). Writing the SpatialData copies the image out of the zip.
   is missing.
 - `shapes=True` without the geometries: `FileNotFoundError`, as for any
   required input.
-- `image` and `image_path` both given: `TypeError`.
-- `image_path` given: `FutureWarning` pointing to `image=`.
 - INFO logs: the label-id rule and why; the number of polygons dropped (no
   table cell, off-grid plane, empty); rings, tiles and levels planned.
 
@@ -162,8 +160,7 @@ processes). Writing the SpatialData copies the image out of the zip.
   it.
 - `labels=True` skips shapes by default; `shapes=True` returns both, and the
   table annotates the labels.
-- Errors: `labels=True` without the image or geometries; `image` together
-  with `image_path`.
+- Errors: `labels=True` without the image or geometries.
 - `X` is CSR.
 - Round trip: write, read, and the table's region / instance key resolve
   against `labels["cell_labels"]`.
@@ -176,4 +173,7 @@ processes). Writing the SpatialData copies the image out of the zip.
 - `pyxa_scverse_demo/build_colon_a2.py` becomes a call to
   `pyxa(source, labels=True, cell_assigned_gene=False)` and a write; the
   `--download` step and the flat Hub layout stay.
-- The Stellaromics/demo dataset card's usage section gains `labels=True`.
+- Callers of `image_path=` move to `image=`: the pyxa tests and CLI
+  (`__main__.py`) in spatialdata-io, `pyxa_scverse_demo/demo_pyxa.ipynb`, and
+  the Stellaromics/demo dataset card's usage snippet (which can then drop its
+  unzip step and gain `labels=True`).
