@@ -35,17 +35,30 @@ uv run jupyter lab demo_pyxa.ipynb
 3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
    that plane and the transcripts within half a plane of it drawn on top.
 
-## Colon A2: clusters → 3D nuclei (`colon_a2.py`)
+## Colon A2: scverse analysis, steered by landmarks (`colon_a2.py`)
 
 A [marimo](https://marimo.io) notebook on a full Region: Glasgow colon H1K,
-Run01 / Analysis02 / A2 (local Pyxa output, not public). The notebook is one
-widget, `LandmarksWidget(sdata)`: from the SpatialData it finds the cell table,
-the 3D cell labels it annotates and the 3D nuclear image on the same grid.
-Cells are colored by Pyxa Studio `Cluster`. **Inspect** (`I`, then click the
-tissue) opens a floating cube of that 500 µm window over the full ~142 µm
-stack; its controls (tilt, additive / maximum-intensity rendering, **Labels**,
-X / Y / Z cuts, contrast) sit in the map's toolbar. A table counts the clusters
-inside the cube: the inspect window within the cut box (`landmarks.volume_cut`).
+Run01 / Analysis02 / A2 (local Pyxa output, not public). The analysis is plain
+scverse; `LandmarksWidget(sdata)` adds landmarks drawn on the tissue as
+per-cell coordinates for scanpy.
+
+1. **Markers**: scanpy normalizes the counts (kept in `layers["counts"]`),
+   ranks markers per Pyxa Studio `Cluster` and names each cluster by its top
+   marker (`obs["cluster"]`); dotplot and the Pyxa UMAP.
+2. **Landmarks**: from the SpatialData the widget finds the cell table, the 3D
+   cell labels and the 3D nuclear image. Cells are colored by the named
+   clusters, with the markers (41 genes) in the gene picker. **Inspect** (`I`,
+   then click the tissue) opens a floating cube of a 300 µm window over the
+   full stack; **Save** keeps it as a selection.
+3. **Measure**: `spatial_rx` `composition`, `distances` and `along_positions`
+   on the picked landmark, computed in XY with every cell's depth in 1 µm z
+   bins. Composition per z bin, cell-type profiles vs distance or along a path
+   (with their depth), and gene profiles as scanpy matrixplots over the binned
+   `obs` columns (`dist_<landmark>`, `path_s`, `z_bin`).
+4. **Selection vs rest**: `obs["in_selection"]` from a widget selection, then
+   `sc.tl.rank_genes_groups` against every other cell.
+5. **In the cube**: cluster counts inside the inspect window within the cut
+   box (`landmarks.volume_cut`).
 
 It needs spatial-rx with the Landmarks inspect cube (not released yet),
 installed editable from a sibling checkout (`../spatial-rx`), with its widget
@@ -78,6 +91,7 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
    uv run marimo edit colon_a2.py
    ```
 
-Landmarks packs all 1,020 genes for the gene picker (about 1.4 GB for 358k
-cells, with a warning), so the map takes about 45 s to appear. The cube reads only the
-256×256×32 chunks its window covers.
+The notebook passes the 41 marker genes to `LandmarksWidget(genes=...)`, so the
+widget packs about 56 MB and the whole notebook runs in about 10 s; all 1,020
+genes would be about 1.4 GB and 45 s. The cube reads only the 256×256×32 chunks
+its window covers.
