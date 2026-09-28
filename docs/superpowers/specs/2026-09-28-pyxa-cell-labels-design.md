@@ -49,7 +49,9 @@ pyxa(
   present, and skips it otherwise. `True` requires one of them. `False` skips.
   A path reads that directory or `.zip`. `image_path` is removed outright
   (no deprecation; #425 is still a draft with no users). `image` is
-  keyword-only.
+  keyword-only. Because `None` now finds the mosaic, `pyxa(path)` returns the
+  image whenever `path` holds one; callers that want no image pass
+  `image=False`.
 - `labels`: `True` rasterizes `labels["cell_labels"]` from the segmentation
   polygons onto the mosaic's grid. It needs both the geometries and the image;
   if either is missing it raises
@@ -76,7 +78,8 @@ pyxa(
 - `label_id` is the trailing integer of `cell_id` after any prefix
   (`(\d+)$`): `Region_17` gives 17, `ROI2_17` gives 17.
 - It is used only when every cell has one, all are unique, all are > 0 (0 is
-  background) and all fit in `uint32`.
+  background) and all are < 2^31 (PIL draws into signed 32-bit mode-`I`
+  images; the labels are stored as `uint32`).
 - Otherwise cells are numbered 1..n in table order, and the reader logs
   (INFO) which rule was used and why.
 - Polygons get their label through `cell_id` joined to the table, so labels
