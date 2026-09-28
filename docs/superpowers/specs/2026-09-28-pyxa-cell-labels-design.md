@@ -105,12 +105,16 @@ pyxa(
    simplification, are dropped, with a logged count. This step is eager: for
    the full colon A2 region it is 23.2M rings, 6.3 GB and about 64 s, plus
    about 20 s to plan the tiles (measured in the spike).
-3. **Levels.** Level L's step relative to level 0 is `round(n0 / n)` per
-   axis (the colon mosaic's coarse levels repeat 17 planes, giving a z step of
-   17 at those levels). Level L with step (dz, dy, dx) keeps the rings on planes where `plane % dz == 0`, divides their xy by
-   (dx, dy) and their plane by dz. This equals nearest-neighbour striding of
-   level 0 without drawing level 0 again. Level shapes are taken from the
-   mosaic, so they match it exactly; draws past a level's edge are clipped.
+3. **Levels.** Level 0 is drawn (steps 4-5). Each coarser level is a lazy
+   strided slice of it, `level0[::dz, ::dy, ::dx][:nz, :ny, :nx]` rechunked,
+   with the step `round(n0 / n)` per axis (the colon mosaic's coarse levels
+   repeat 17 planes, giving a z step of 17 at those levels). This is exactly
+   nearest-neighbour striding. Drawing each level at its own resolution was
+   tried and rejected: PIL fills every pixel a polygon touches, so small cells
+   grow at coarse levels (agreement with striding 0.97 / 0.91 / 0.80 / 0.60 at
+   levels 1-4 of xsmall). spatialdata writes all pyramid levels in one
+   `da.compute`, so each level-0 tile is drawn once per write; computing a
+   coarse level alone draws the level-0 tiles it samples.
 4. **Tiles.** For each level, rings are grouped by 32 x 1024 x 1024 tile
    (clipped to the level's shape). A ring that crosses tiles goes to each of
    them. Rings are sorted by label within a tile, so where rings overlap the
