@@ -141,9 +141,9 @@ rasterization is estimated at about 3 minutes on 32 threads.
 A `.zip` is opened with `zarr.storage.ZipStore(path, mode="r")`. The group
 path inside it is the zip's single top-level entry
 (`mosaic_3d.ome.zarr/`). Arrays come from `da.from_zarr` on that store, and
-the element keeps a reference to it. The docs note that zip-backed elements
-are read with the threaded scheduler (ZipStore is not safe to use across
-processes). Writing the SpatialData copies the image out of the zip.
+the element keeps a reference to it. The docs recommend the default threaded
+scheduler for zip-backed elements (a pickled ZipStore reopens the zip in each
+process). Writing the SpatialData copies the image out of the zip.
 
 ## Errors and logging
 
