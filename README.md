@@ -92,8 +92,8 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
    uv run python build_colon_a2.py --download --overwrite
    ```
 
-   Takes about 7 minutes total (roughly 1.5 min to read, 5.5 min to write),
-   with a peak of roughly 44 GB of memory.
+   Takes about 8 minutes total (roughly 1.5 min to read, 6 min to write),
+   with a peak of roughly 30 GB of memory.
 
 3. **Open** the notebook:
 
