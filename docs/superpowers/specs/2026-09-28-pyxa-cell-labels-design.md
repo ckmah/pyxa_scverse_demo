@@ -91,8 +91,9 @@ pyxa(
 1. **Grid.** From the mosaic's OME-NGFF metadata: each level's (z, y, x)
    shape and the level-0 scale and translation (µm). This is factored out of
    `_get_image` so the image and labels share one definition.
-2. **Rings.** The parquet is decoded by row group in a thread pool (shapely
-   and pyarrow release the GIL) into flat arrays: label, plane, ring lengths,
+2. **Rings.** The parquet is decoded one task per row group in joblib worker
+   processes (`prefer="processes"`, loky by default, configurable with
+   `joblib.parallel_config`), each streaming 65,536-row batches, into flat arrays: label, plane, ring lengths,
    float32 vertices and bounds. For each polygon part:
    - take the exterior ring;
    - convert pixel coordinates to µm with the already inferred `xy_size`, then
@@ -103,8 +104,10 @@ pyxa(
 
    Rings whose plane is outside the grid, or that are empty after
    simplification, are dropped, with a logged count. This step is eager: for
-   the full colon A2 region it is 23.2M rings, 6.3 GB and about 64 s, plus
-   about 20 s to plan the tiles (measured in the spike).
+   the full colon A2 region it is 23.2M rings (6.3 GB of arrays), 33.8 s and a
+   29.9 GB peak across the workers, plus about 20 s to plan the tiles. A thread
+   pool was tried first and rejected: 925 s and a 109 GB peak from allocator
+   contention.
 3. **Levels.** Level 0 is drawn (steps 4-5). Each coarser level is a lazy
    strided slice of it, `level0[::dz, ::dy, ::dx][:nz, :ny, :nx]` rechunked,
    with the step `round(n0 / n)` per axis (the colon mosaic's coarse levels
