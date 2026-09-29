@@ -1,12 +1,11 @@
 # pyxa_scverse_demo
 
-Jupyter notebook showing how to read Stellaromics Pyxa output into a
-[SpatialData](https://spatialdata.scverse.org/) object with the experimental
-`pyxa` reader from [spatialdata-io](https://github.com/scverse/spatialdata-io),
-and browse it one z-plane at a time.
-
-It uses the `xsmall` crop (100 × 100 × 100 µm) of the
-[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset.
+[marimo](https://marimo.io) notebooks showing how to read Stellaromics Pyxa
+output into a [SpatialData](https://spatialdata.scverse.org/) object with the
+experimental `pyxa` reader from
+[spatialdata-io](https://github.com/scverse/spatialdata-io), browse it one
+z-plane at a time (`demo_pyxa.py`), and analyse a full region with scverse
+(`colon_a2.py`).
 
 ## Setup
 
@@ -19,17 +18,20 @@ spatialdata-io/        # pyxa-reader branch
 pyxa_scverse_demo/     # this project
 ```
 
-Then install and open the notebook with [uv](https://docs.astral.sh/uv/):
+Then install and open a notebook with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync
-uv run jupyter lab demo_pyxa.ipynb
+uv run marimo edit demo_pyxa.py
 ```
 
-## Notebook
+## Pyxa to SpatialData (`demo_pyxa.py`)
+
+A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
+[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset.
 
 1. **Get the data**: downloads `xsmall/` from the Hub via fsspec's `hf://`
-   filesystem into `data/`; the reader reads the zipped OME-Zarr DAPI mosaic in
+   filesystem into `data/xsmall/`, skipping files already there; the reader reads the zipped OME-Zarr DAPI mosaic in
    place.
 2. **Convert**: reads it with `pyxa(...)` and writes SpatialData Zarr to
    `data/xsmall.zarr`.
