@@ -2,12 +2,14 @@
 
 Loads the SpatialData that ``build_colon_a2.py`` builds into ``data/`` (not
 committed) from the ``colon/`` folder of the Stellaromics/demo dataset on Hugging Face:
-the full-section cell table with Pyxa Studio cluster labels, in Pyxa µm, the 3D
-cell labels and Meteor's 3D nuclear mosaic on one voxel grid. Scanpy normalizes
-the table and ranks cluster markers; ``LandmarksWidget(sdata)`` shows the clusters
-on the map with the markers in its gene picker. Landmarks drawn there feed the
-``spatial_rx`` measures (XY geometry, 1 µm z bins), whose columns go back into
-``adata.obs`` for scanpy plots and differential expression.
+the full-section cell table in Pyxa µm, the 3D cell labels and Meteor's 3D nuclear
+mosaic on one voxel grid. Two per-cell annotations, committed in
+``annotations/colon_a2/``, are joined onto the table by ``cell_id``: cell types and lineages
+(``cell_typing.parquet``) and Novae spatial domains (``novae_domains.parquet``).
+``LandmarksWidget(sdata)`` shows them on the map, with cell-type markers in its gene
+picker. Landmarks drawn there feed the ``spatial_rx`` measures (XY geometry, 1 µm z
+bins), whose columns go back into ``adata.obs`` for scanpy plots and differential
+expression.
 
     uv run python build_colon_a2.py --download --overwrite
     uv run marimo edit colon_a2.py
@@ -39,17 +41,30 @@ def _():
         landmarks_to_geodataframe,
         write_obs,
     )
+    from spatial_rx.categories import default_categorical_palette
 
-    SDATA_PATH = Path(__file__).resolve().parent / "data" / "colon_a2.sdata.zarr"
-    CLUSTER = "cluster"
+    ROOT = Path(__file__).resolve().parent
+    SDATA_PATH = ROOT / "data" / "colon_a2.sdata.zarr"
+    CELL_TYPING = ROOT / "annotations" / "colon_a2" / "cell_typing.parquet"
+    NOVAE_DOMAINS = ROOT / "annotations" / "colon_a2" / "novae_domains.parquet"
+    CELL_TYPE, LINEAGE, DOMAIN = "cell_type", "lineage", "domain"
+    DOMAIN_LEVEL = "domain_L7"  # Novae resolution: L3, L5, L7, L10, L14 or L18
+    UNASSIGNED = "unassigned"
     Z_BIN = 1.0  # µm; the measures bin depth at this width
     return (
-        CLUSTER,
+        CELL_TYPE,
+        CELL_TYPING,
+        DOMAIN,
+        DOMAIN_LEVEL,
+        LINEAGE,
         LandmarksWidget,
+        NOVAE_DOMAINS,
         SDATA_PATH,
+        UNASSIGNED,
         Z_BIN,
         along_positions,
         composition,
+        default_categorical_palette,
         distances,
         landmarks_to_geodataframe,
         matplotlib,
@@ -76,16 +91,18 @@ def _(mo):
     # Colon A2: scverse analysis, steered by landmarks
 
     A thick section of human colon (Glasgow H1K, Run01 / A2): 358k cells
-    segmented in 3D by Pyxa, with Pyxa Studio clusters. The analysis is plain
-    scverse (SpatialData, AnnData, scanpy). The Landmarks widget adds what a
-    table alone cannot: axes, bands and regions drawn on the tissue, turned into
-    per-cell coordinates that scanpy can group by.
+    segmented in 3D by Pyxa, annotated with cell types and Novae spatial
+    domains. The analysis is plain scverse (SpatialData, AnnData, scanpy). The
+    Landmarks widget adds what a table alone cannot: axes, bands and regions
+    drawn on the tissue, turned into per-cell coordinates that scanpy can group
+    by.
 
-    1. **scanpy** normalizes counts and ranks markers per cluster.
-    2. **Landmarks** shows the clusters on the map; draw a shape, line or spline.
+    1. **Annotations**: cell types, lineages and Novae domains join the table;
+       scanpy normalizes counts and checks the cell types' markers.
+    2. **Landmarks** shows the cell types on the map; draw a shape, line or spline.
     3. **Measure** turns the landmark into distance, position along a path, or
        composition in XY, with every cell's depth in 1 µm z bins, written to
-       `adata.obs`.
+       `adata.obs` and grouped by cell type, lineage or domain.
     4. **scanpy** again: gene profiles along those coordinates, and
        differential expression of a selection against the rest.
     """)
@@ -112,54 +129,126 @@ def _(SDATA_PATH, mo, sd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 1 · Cluster markers with scanpy
+    ## 1 · Cell types and Novae domains
+
+    Two per-cell annotations of this region, committed in
+    `annotations/colon_a2/`, join `adata.obs` by `cell_id`:
+
+    - `cell_typing.parquet`: `cell_type` (23 types, including a low-signal QC
+      class) and its `lineage`;
+    - `novae_domains.parquet`: Novae spatial domains at six resolutions; the
+      notebook keeps `DOMAIN_LEVEL` as `domain`.
+
+    Table cells missing from a file are `unassigned`. Their colors go in
+    `adata.uns`, so scanpy and the widget draw each label the same way.
 
     Counts are kept in `layers["counts"]`; `X` becomes log-normalized
-    expression. A t-test ranks each Pyxa Studio cluster against the rest, and
-    each cluster is named by its most specific marker not already used by a
-    larger cluster, so the map legend reads as biology rather than numbers.
+    expression. As a check on the cell types, and for the widget's gene picker,
+    each type's two markers are the genes with the largest fold change among
+    those detected in at least a quarter of its cells. Next to the Pyxa UMAP,
+    the heatmap shows which cell types make up each Novae domain.
     """)
     return
 
 
 @app.cell
-def _(CLUSTER, adata, pd, sc):
+def _(
+    CELL_TYPE,
+    CELL_TYPING,
+    DOMAIN,
+    DOMAIN_LEVEL,
+    LINEAGE,
+    NOVAE_DOMAINS,
+    UNASSIGNED,
+    adata,
+    default_categorical_palette,
+    mo,
+    pd,
+):
+    typing = pd.read_parquet(CELL_TYPING, columns=["cell_id", CELL_TYPE, LINEAGE])
+    domains = pd.read_parquet(NOVAE_DOMAINS, columns=["cell_id", DOMAIN_LEVEL])
+    joined = (
+        typing.merge(domains, on="cell_id", how="outer")
+        .rename(columns={DOMAIN_LEVEL: DOMAIN})
+        .set_index("cell_id")
+        .reindex(adata.obs["cell_id"].astype(str))
+    )
+    joined[DOMAIN] = joined[DOMAIN].replace("nan", None)  # Novae left these unassigned
+
+    def by_size(values, last=()):
+        order = list(values.value_counts().index)
+        return [v for v in order if v not in last] + [v for v in last if v in order]
+
+    for key, last in [(CELL_TYPE, ["Low-signal (QC)"]), (LINEAGE, []), (DOMAIN, [])]:
+        categories = [*by_size(joined[key].dropna(), last), UNASSIGNED]
+        adata.obs[key] = pd.Categorical(
+            joined[key].fillna(UNASSIGNED).to_numpy(), categories=categories
+        )
+        adata.uns[f"{key}_colors"] = [
+            *default_categorical_palette(len(categories) - 1),
+            "#8c8c8c",
+        ]
+    groups = {"cell type": CELL_TYPE, "lineage": LINEAGE, "Novae domain": DOMAIN}
+
+    n_typed = int((adata.obs[CELL_TYPE] != UNASSIGNED).sum())
+    n_domain = int((adata.obs[DOMAIN] != UNASSIGNED).sum())
+    mo.md(
+        f"**{n_typed:,}** of {adata.n_obs:,} cells have a cell type and "
+        f"**{n_domain:,}** a Novae domain ({DOMAIN_LEVEL}: "
+        f"{len(adata.obs[DOMAIN].cat.categories) - 1} domains)."
+    )
+    return (groups,)
+
+
+@app.cell
+def _(UNASSIGNED, adata, groups, sc):
+    MIN_EXPRESSING = 0.25  # a marker is detected in at least this share of the type's cells
     adata.layers["counts"] = adata.X.copy()
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)
-    sc.tl.rank_genes_groups(adata, "Cluster", method="t-test")
 
+    cell_type = groups["cell type"]
+    typed = [
+        c for c in adata.obs[cell_type].cat.categories if c not in (UNASSIGNED, "Low-signal (QC)")
+    ]
+    sc.tl.rank_genes_groups(adata, cell_type, groups=typed, method="t-test", pts=True)
     ranked = sc.get.rank_genes_groups_df(adata, group=None)
-    top = ranked.groupby("group", observed=True).head(10)
-    names, used = {}, set()
-    for cluster_id, genes in top.groupby("group", observed=True)["names"]:
-        gene = next((g for g in genes if g not in used), genes.iloc[0])
-        used.add(gene)
-        names[str(cluster_id)] = f"{cluster_id} · {gene}"
-    labels = adata.obs["Cluster"].astype(str).map(names)
-    adata.obs[CLUSTER] = pd.Categorical(labels, categories=list(names.values()))
-
-    marker_genes = list(dict.fromkeys(top.groupby("group", observed=True).head(3)["names"]))
+    expressed = ranked[ranked["pct_nz_group"] >= MIN_EXPRESSING]
+    top = expressed.sort_values("logfoldchanges", ascending=False).groupby("group", observed=True)
+    by_type = top.head(2).groupby("group", observed=True)["names"].apply(list)
+    marker_genes = list(dict.fromkeys(g for t in typed if t in by_type for g in by_type[t]))
     return (marker_genes,)
 
 
 @app.cell
-def _(CLUSTER, adata, marker_genes, mo, plt, sc):
+def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, marker_genes, mo, pd, plt, sc):
     dotplot = sc.pl.dotplot(
-        adata,
+        adata[adata.obs[CELL_TYPE] != UNASSIGNED],
         marker_genes,
-        groupby=CLUSTER,
+        groupby=CELL_TYPE,
         standard_scale="var",
         show=False,
         return_fig=True,
     )
     dotplot.make_figure()
-    umap_ax = sc.pl.embedding(
-        adata, "X_umap", color=CLUSTER, size=1, frameon=False, show=False
+
+    domain_share = pd.crosstab(adata.obs[DOMAIN], adata.obs[CELL_TYPE], normalize="index")
+    domain_share = domain_share.drop(index=UNASSIGNED, columns=UNASSIGNED)
+    fig, (ax_umap, ax_share) = plt.subplots(
+        1, 2, figsize=(17, 6), width_ratios=[1, 1.5], layout="constrained"
     )
-    markers_view = mo.vstack([dotplot.fig, umap_ax.figure])
+    sc.pl.embedding(
+        adata, "X_umap", color=CELL_TYPE, size=1, frameon=False, ax=ax_umap, show=False
+    )
+    mesh = ax_share.pcolormesh(domain_share.to_numpy(), cmap="magma")
+    ax_share.set_xticks([x + 0.5 for x in range(domain_share.shape[1])], domain_share.columns, rotation=90)
+    ax_share.set_yticks([y + 0.5 for y in range(domain_share.shape[0])], domain_share.index)
+    ax_share.invert_yaxis()
+    ax_share.set(title="Cell types in each Novae domain", ylabel="domain")
+    fig.colorbar(mesh, ax=ax_share, label="share of the domain's cells", shrink=0.8)
+    annotations_view = mo.vstack([dotplot.fig, fig])
     plt.close("all")
-    markers_view
+    annotations_view
     return
 
 
@@ -169,9 +258,9 @@ def _(mo):
     ## 2 · Landmarks on the tissue
 
     The widget reads the table, the 3D cell labels and the nuclear mosaic from
-    the SpatialData, and colors cells by the named clusters. Its gene picker
-    holds the markers above (packing all 1,020 genes for 358k cells takes about
-    45 s; the markers load in seconds).
+    the SpatialData, and colors cells by cell type; its color picker switches to
+    `lineage` or `domain`. Its gene picker holds the markers above (packing all
+    1,020 genes for 358k cells takes about 45 s; the markers load in seconds).
 
     Draw a **shape** around a region, or a **line** / **spline** along an axis
     (crypt to lumen, muscle to mucosa). **Inspect** (`I`) opens a 300 µm cube
@@ -181,9 +270,9 @@ def _(mo):
 
 
 @app.cell(expand_output=True)
-def _(CLUSTER, LandmarksWidget, marker_genes, mo, sdata):
+def _(CELL_TYPE, LandmarksWidget, marker_genes, mo, sdata):
     widget = LandmarksWidget(
-        sdata, color=CLUSTER, genes=marker_genes, contrast_limits=(40, 255)
+        sdata, color=CELL_TYPE, genes=marker_genes, contrast_limits=(40, 255)
     )
     landmarks = mo.ui.anywidget(widget)
     landmarks
@@ -217,17 +306,18 @@ def _(get_landmark, get_selection, landmarks, mo, set_landmark, set_selection):
 
 
 @app.cell
-def _(MEASURES, adata, marker_genes, mo):
+def _(MEASURES, adata, groups, marker_genes, mo):
     measure_pick = mo.ui.dropdown(
         options=list(MEASURES), value="Composition by depth", label="Measure"
     )
+    group_pick = mo.ui.dropdown(options=groups, value="cell type", label="Group by")
     gene_pick = mo.ui.multiselect(
         options=list(adata.var_names),
         value=marker_genes[:8],
         label="Genes",
         full_width=True,
     )
-    return gene_pick, measure_pick
+    return gene_pick, group_pick, measure_pick
 
 
 @app.cell(hide_code=True)
@@ -239,15 +329,15 @@ def _(mo):
     the whole section: a shape is a column through the tissue, a line is a
     wall. Because the table has x, y, z, `distances`, `along_positions` and
     `composition` also bin every cell's depth at 1 µm (`z_bin_size`), so the
-    same XY measure can be read plane by plane. The per-cell values are written
-    to `adata.obs` (`dist_<landmark>`, `path_s`) for scanpy.
+    same XY measure can be read plane by plane. Composition counts the groups
+    picked in **Group by**. The per-cell values are written to `adata.obs`
+    (`dist_<landmark>`, `path_s`) for scanpy.
     """)
     return
 
 
 @app.cell
 def _(
-    CLUSTER,
     Z_BIN,
     adata,
     along_positions,
@@ -259,7 +349,6 @@ def _(
     sc,
     write_obs,
 ):
-    ORDER = list(adata.obs[CLUSTER].cat.categories)
     MIN_CELLS = 20  # bins with fewer cells are left blank
 
     def heatmap(ax, table, *, x_width=None, y_width=None, label=""):
@@ -286,8 +375,8 @@ def _(
     def z_edges(d):
         return np.arange(d["z_bin"].min(), d["z_bin"].max() + 1.5 * Z_BIN, Z_BIN)
 
-    def composition_by_depth(gdf, cells, lid):
-        comp = composition(adata, gdf, obs_key=CLUSTER, obs_names=cells, z_bin_size=Z_BIN)
+    def composition_by_depth(gdf, cells, lid, key):
+        comp = composition(adata, gdf, obs_key=key, obs_names=cells, z_bin_size=Z_BIN)
         if comp.empty:
             return None
         by_z = comp.pivot_table(index="z_bin", columns="group", values="proportion", fill_value=0)
@@ -295,7 +384,7 @@ def _(
         by_z = by_z.where(n_per_z.reindex(by_z.index) >= MIN_CELLS)
         by_z = by_z.reindex(
             index=z_edges(comp)[:-1],
-            columns=[g for g in ORDER if g in by_z.columns],
+            columns=[g for g in adata.obs[key].cat.categories if g in by_z.columns],
         )
         pooled = comp.groupby("group")["count"].sum().reindex(by_z.columns)
         fig, (ax_bar, ax_z) = plt.subplots(
@@ -307,9 +396,9 @@ def _(
         ax_z.set(ylabel="z (µm)", title=f"Composition per {Z_BIN:g} µm z bin · {lid}")
         return fig
 
-    def cell_types_profile(d, value, edges, xlabel, title):
+    def groups_profile(d, value, edges, xlabel, title, key):
         rows = {}
-        for group in ORDER:
+        for group in adata.obs[key].cat.categories:
             counts, _ = np.histogram(d.loc[d["group"] == group, value], bins=edges)
             if counts.max() > 0:
                 rows[group] = counts / counts.max()
@@ -365,15 +454,15 @@ def _(
             return d
         return None
 
-    def run_measure(measure, gdf, cells, genes):
-        """Figure for `measure` on one landmark, or a note on why there is none."""
+    def run_measure(measure, gdf, cells, genes, key):
+        """Figure for `measure` on one landmark, grouped by `obs[key]`, or a note on why there is none."""
         lid = str(gdf["id"].iloc[0])
         needs = f"**{measure}** needs {MEASURES[measure]} that covers the cells."
         if measure == "Composition by depth":
-            return composition_by_depth(gdf, cells, lid) or needs
+            return composition_by_depth(gdf, cells, lid, key) or needs
         along = "along path" in measure
         measure_fn = along_positions if along else distances
-        d = measure_fn(adata, gdf, obs_key=CLUSTER, obs_names=cells, z_bin_size=Z_BIN)
+        d = measure_fn(adata, gdf, obs_key=key, obs_names=cells, z_bin_size=Z_BIN)
         if d.empty:
             return needs
         value = "s" if along else "distance"
@@ -386,8 +475,8 @@ def _(
             edges, fmt, xlabel = np.linspace(0, hi, 25), "{:.0f}", "distance from landmark (µm)"
             d = d[d["distance"] < hi]
         title = f"{measure} · {lid}"
-        if measure.startswith("Cell types"):
-            return cell_types_profile(d, value, edges, xlabel, title)
+        if measure.startswith("Composition"):
+            return groups_profile(d, value, edges, xlabel, title, key)
         if measure == "Genes by depth":
             region = in_region(d, gdf)
             if region is None or region.empty:
@@ -399,8 +488,8 @@ def _(
 
     MEASURES = {
         "Composition by depth": "a shape, or a line / spline with a buffer,",
-        "Cell types vs distance": "a landmark",
-        "Cell types along path": "a line or spline",
+        "Composition vs distance": "a landmark",
+        "Composition along path": "a line or spline",
         "Genes vs distance": "a landmark",
         "Genes along path": "a line or spline",
         "Genes by depth": "a shape, or a line / spline with a buffer,",
@@ -412,6 +501,7 @@ def _(
 def _(
     adata,
     gene_pick,
+    group_pick,
     landmark_pick,
     landmarks,
     landmarks_to_geodataframe,
@@ -430,15 +520,20 @@ def _(
         result = "Pick at least one gene."
     else:
         cells = landmarks.get_obs_names(adata, selection_id=selection_pick.value)
-        result = run_measure(measure_pick.value, gdf, cells, list(gene_pick.value))
+        result = run_measure(
+            measure_pick.value, gdf, cells, list(gene_pick.value), group_pick.value
+        )
     measured = mo.md(f"_{result}_") if isinstance(result, str) else result
     plt.close("all")
     return (measured,)
 
 
 @app.cell(hide_code=True)
-def _(gene_pick, landmark_pick, measure_pick, measured, mo, selection_pick):
-    controls = [mo.hstack([landmark_pick, selection_pick, measure_pick], justify="start")]
+def _(gene_pick, group_pick, landmark_pick, measure_pick, measured, mo, selection_pick):
+    picks = [landmark_pick, selection_pick, measure_pick]
+    if measure_pick.value.startswith("Composition"):
+        picks.append(group_pick)
+    controls = [mo.hstack(picks, justify="start")]
     if measure_pick.value.startswith("Genes"):
         controls.append(gene_pick)
     mo.vstack([*controls, measured], gap=0.5)
@@ -459,7 +554,7 @@ def _(mo):
 
 
 @app.cell
-def _(CLUSTER, adata, landmarks, mo, pd, sc, selection_pick):
+def _(adata, group_pick, landmarks, mo, pd, sc, selection_pick):
     sel = selection_pick.value
     mo.stop(sel == "all", mo.md("_Pick a selection in **Cells** to compare it with the rest._"))
     landmarks.assign_obs_mask(adata, "in_selection", selection_id=sel)
@@ -472,7 +567,8 @@ def _(CLUSTER, adata, landmarks, mo, pd, sc, selection_pick):
         adata, "in_selection", groups=["in"], reference="out", method="t-test", key_added="rank_selection"
     )
     de = sc.get.rank_genes_groups_df(adata, group="in", key="rank_selection").head(20)
-    share = adata.obs.loc[adata.obs["in_selection"] == "in", CLUSTER].value_counts(normalize=True)
+    in_sel = adata.obs["in_selection"] == "in"
+    share = adata.obs.loc[in_sel, group_pick.value].value_counts(normalize=True)
     mo.vstack(
         [
             mo.md(f"**{n_in:,}** cells in **{sel}**, mostly {', '.join(share.index[:3])}"),

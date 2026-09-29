@@ -45,23 +45,30 @@ output, ~30 GB; attribution on the dataset card). The analysis is plain
 scverse; `LandmarksWidget(sdata)` adds landmarks drawn on the tissue as
 per-cell coordinates for scanpy.
 
-1. **Markers**: scanpy normalizes the counts (kept in `layers["counts"]`),
-   ranks markers per Pyxa Studio `Cluster` and names each cluster by its top
-   marker (`obs["cluster"]`); dotplot and the Pyxa UMAP.
+1. **Cell types and Novae domains**: two per-cell annotation files,
+   committed in `annotations/colon_a2/`, join `adata.obs` by `cell_id`.
+   `cell_typing.parquet` gives `cell_type` (23 types) and `lineage`;
+   `novae_domains.parquet` gives Novae spatial domains at six resolutions, of
+   which the notebook keeps `DOMAIN_LEVEL` (`domain_L7`, 7 domains) as
+   `domain`. Table cells missing from a file are `unassigned`.
+   scanpy normalizes the counts (kept in `layers["counts"]`) and picks two
+   markers per cell type, as a check on the types and for the widget's gene
+   picker. The section shows a dotplot, the Pyxa UMAP, and a heatmap of the
+   cell types in each domain.
 2. **Landmarks**: from the SpatialData the widget finds the cell table, the 3D
-   cell labels and the 3D nuclear image. Cells are colored by the named
-   clusters, with the markers (41 genes) in the gene picker. **Inspect** (`I`,
-   then click the tissue) opens a floating cube of a 300 µm window over the
-   full stack; **Save** keeps it as a selection.
+   cell labels and the 3D nuclear image. Cells are colored by cell type, and
+   the widget's color picker switches to lineage or domain. The markers (40
+   genes) are in the gene picker. **Inspect** (`I`, then click the tissue)
+   opens a floating cube of a 300 µm window over the full stack; **Save**
+   keeps it as a selection.
 3. **Measure**: `spatial_rx` `composition`, `distances` and `along_positions`
    on the picked landmark, computed in XY with every cell's depth in 1 µm z
-   bins. Composition per z bin, cell-type profiles vs distance or along a path
-   (with their depth), and gene profiles as scanpy matrixplots over the binned
-   `obs` columns (`dist_<landmark>`, `path_s`, `z_bin`).
+   bins. The composition measures (per z bin, vs distance, or along a path,
+   with their depth) group cells by cell type, lineage or domain. Gene profiles
+   are scanpy matrixplots over the binned `obs` columns (`dist_<landmark>`,
+   `path_s`, `z_bin`).
 4. **Selection vs rest**: `obs["in_selection"]` from a widget selection, then
    `sc.tl.rank_genes_groups` against every other cell.
-5. **In the cube**: cluster counts inside the inspect window within the cut
-   box (`landmarks.volume_cut`).
 
 It needs spatial-rx with the Landmarks inspect cube and `z_bin_size` measures
 (on `main`, not released yet),
@@ -101,7 +108,7 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
    uv run marimo edit colon_a2.py
    ```
 
-The notebook passes the 41 marker genes to `LandmarksWidget(genes=...)`, so the
+The notebook passes the 40 marker genes to `LandmarksWidget(genes=...)`, so the
 widget packs about 56 MB and the whole notebook runs in about 10 s; all 1,020
 genes would be about 1.4 GB and 45 s. The cube reads only the 256×256×32 chunks
 its window covers.
