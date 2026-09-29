@@ -78,7 +78,8 @@ bundles built, and the `pyxa` reader with optional inputs from the sibling
    call:
    - `tables/rna`: counts and cell metadata (required) plus `pyxa_studio_v1.csv`
      for `Cluster` and the 3D UMAP; this script keeps only the cells Pyxa
-     Studio kept, in Pyxa µm. Transcripts are skipped (7.7 GB).
+     Studio kept, in Pyxa µm. Transcripts are skipped (7.7 GB). `X` holds the
+     raw integer counts (sparse `int64`; the previous build wrote `float32`).
    - `labels/cell_labels`: the segmentation polygons rasterized onto the 3D
      mosaic's grid as a `Labels3DModel` (`uint32`, label = the `N` of
      `Region_N`), all pyramid levels. The table annotates it through

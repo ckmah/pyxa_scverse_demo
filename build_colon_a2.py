@@ -17,6 +17,7 @@ import json
 import time
 from pathlib import Path
 
+from spatialdata import SpatialData
 from spatialdata_io.experimental import pyxa
 
 DATA = Path(__file__).resolve().parent / "data"
@@ -44,7 +45,7 @@ def download(dest: Path = DEFAULT_SOURCE) -> Path:
     return dest.parent / HF_FOLDER
 
 
-def read(source: Path):
+def read(source: Path) -> SpatialData:
     """The region as a SpatialData; an ``Analysis Group`` keeps its tables and mosaic apart."""
     if (source / "ag_output").is_dir():
         return pyxa(
@@ -75,7 +76,8 @@ def main() -> None:
     sdata.write(args.out, overwrite=args.overwrite)
     print(f"wrote {args.out} in {time.perf_counter() - t0:.0f} s", flush=True)
     kept = sdata.tables["rna"]
-    print(json.dumps({"out": str(args.out), "n_obs": kept.n_obs, "labels": list(sdata.labels), "images": list(sdata.images)}, indent=1))
+    summary = {"out": str(args.out), "n_obs": kept.n_obs, "labels": list(sdata.labels), "images": list(sdata.images)}
+    print(json.dumps(summary, indent=1))
 
 
 if __name__ == "__main__":

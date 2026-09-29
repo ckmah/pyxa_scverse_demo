@@ -99,7 +99,7 @@ def _(SDATA_PATH, mo, sd):
         mo.md(
             f"`{SDATA_PATH}` not found. Download the colon region from "
             "[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo/tree/main/colon) "
-            "(about 22 GB, plus 12 GB unzipped) and build it:\n\n"
+            "(about 22 GB) and build it:\n\n"
             "```bash\nuv run python build_colon_a2.py --download --overwrite\n```"
         ),
     )
