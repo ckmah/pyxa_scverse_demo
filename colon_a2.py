@@ -18,7 +18,7 @@ expression.
 import marimo
 
 __generated_with = "0.25.0"
-app = marimo.App(width="medium")
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -47,8 +47,9 @@ def _():
     SDATA_PATH = ROOT / "data" / "colon_a2.sdata.zarr"
     CELL_TYPING = ROOT / "annotations" / "colon_a2" / "cell_typing.parquet"
     NOVAE_DOMAINS = ROOT / "annotations" / "colon_a2" / "novae_domains.parquet"
+    NICHE_SIGNATURES = ROOT / "annotations" / "colon_a2" / "niche_signatures.csv"  # domain id -> niche name
     CELL_TYPE, LINEAGE, DOMAIN = "cell_type", "lineage", "domain"
-    DOMAIN_LEVEL = "domain_L7"  # Novae resolution: L3, L5, L7, L10, L14 or L18
+    DOMAIN_LEVEL = "domain_L10"  # Novae resolution: L3, L5, L7, L10, L14 or L18
     UNASSIGNED = "unassigned"
     Z_BIN = 1.0  # µm; the measures bin depth at this width
     return (
@@ -58,6 +59,7 @@ def _():
         DOMAIN_LEVEL,
         LINEAGE,
         LandmarksWidget,
+        NICHE_SIGNATURES,
         NOVAE_DOMAINS,
         SDATA_PATH,
         UNASSIGNED,
@@ -82,44 +84,30 @@ def _():
 def _(matplotlib, mo):
     theme = mo.app_meta().theme
     matplotlib.style.use("dark_background" if theme == "dark" else "default")
+    matplotlib.rcParams.update({"font.size": 13, "axes.titlesize": 15, "axes.labelsize": 13, "legend.fontsize": 11})
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Colon A2: scverse analysis, steered by landmarks
+    # Case Study: colorectal cancer
 
-    A thick section of human colon (Glasgow H1K, Run01 / A2): 358k cells
-    segmented in 3D by Pyxa, annotated with cell types and Novae spatial
-    domains. The analysis is plain scverse (SpatialData, AnnData, scanpy). The
-    Landmarks widget adds what a table alone cannot: axes, bands and regions
-    drawn on the tissue, turned into per-cell coordinates that scanpy can group
-    by.
+    Here we show a 3D spatial transcriptomics dataset with a 1020-plex gene panel profiling a colorectal cancer thick tissue section acquired on the Stellaromics Pyxa platform. The captured tissue volume is roughly 5mm x 4mm x 0.14mm (xyz).
 
-    1. **Annotations**: cell types, lineages and Novae domains join the table;
-       scanpy normalizes counts and checks the cell types' markers.
-    2. **Landmarks** shows the cell types on the map; draw a shape, line or spline.
-    3. **Measure** turns the landmark into distance, position along a path, or
-       composition in XY, with every cell's depth in 1 µm z bins, written to
-       `adata.obs` and grouped by cell type, lineage or domain.
-    4. **scanpy** again: gene profiles along those coordinates, and
-       differential expression of a selection against the rest.
+    /// admonition | Acknowledgements
+    **School of Cancer Sciences, University of Glasgow, UK**: Marta Campillo Poveda, Anthony Chalmers, Yoana Doncheva, Joanne Edwards, Andrea Gonzalez Ciscar, **Nigel Jamieson**, Claire Kennedy Dietrich, Ghazal Latif, Assya Legrini, Josefina Marinez Vasquez, Pamela McCall, Mari-Claire McGuigan, Luke McNickle, Tengyu Zhang
+
+    **University of Edinburgh, UK**: Gerry Thompson
+
+    **Stellaromics Inc, Boston, MA, USA**: Leah Carlson, Jeremy Lambert, Clarence Mah, Raghav Padmanabhan, Chan Park, Daphne Sze, Alexis Wong
+    ///
     """)
     return
 
 
 @app.cell
-def _(SDATA_PATH, mo, sd):
-    mo.stop(
-        not SDATA_PATH.exists(),
-        mo.md(
-            f"`{SDATA_PATH}` not found. Download the colon region from "
-            "[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo/tree/main/colon) "
-            "(about 22 GB) and build it:\n\n"
-            "```bash\nuv run python build_colon_a2.py --download --overwrite\n```"
-        ),
-    )
+def _(SDATA_PATH, sd):
     sdata = sd.read_zarr(SDATA_PATH)
     adata = sdata["rna"]
     sdata
@@ -129,24 +117,17 @@ def _(SDATA_PATH, mo, sd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 1 · Cell types and Novae domains
+    ## Cell type and spatial domain annotations
 
-    Two per-cell annotations of this region, committed in
-    `annotations/colon_a2/`, join `adata.obs` by `cell_id`:
+    - `cell types:` 23 types, including a low-signal QC class
+    - `lineage:` 5 coarse groups of cell types
+    - `domain:` 10 Novae inferred spatial domains (L10), named by their niche signatures
 
-    - `cell_typing.parquet`: `cell_type` (23 types, including a low-signal QC
-      class) and its `lineage`;
-    - `novae_domains.parquet`: Novae spatial domains at six resolutions; the
-      notebook keeps `DOMAIN_LEVEL` as `domain`.
+    All annotations also have an additional "unassigned" class for unlabeled cells.
 
-    Table cells missing from a file are `unassigned`. Their colors go in
-    `adata.uns`, so scanpy and the widget draw each label the same way.
-
-    Counts are kept in `layers["counts"]`; `X` becomes log-normalized
-    expression. As a check on the cell types, and for the widget's gene picker,
-    each type's two markers are the genes with the largest fold change among
-    those detected in at least a quarter of its cells. Next to the Pyxa UMAP,
-    the heatmap shows which cell types make up each Novae domain.
+    /// admonition | Out of scope
+    Cell typing and spatial domain inference (Novae) results were performed separately and pulled in here to keep this notebook focused on the case study.
+    ///
     """)
     return
 
@@ -158,13 +139,21 @@ def _(
     DOMAIN,
     DOMAIN_LEVEL,
     LINEAGE,
+    NICHE_SIGNATURES,
     NOVAE_DOMAINS,
     UNASSIGNED,
     adata,
     default_categorical_palette,
+    matplotlib,
     mo,
+    np,
     pd,
+    plt,
 ):
+    import colorsys
+
+    from scipy.cluster.hierarchy import leaves_list, linkage
+
     typing = pd.read_parquet(CELL_TYPING, columns=["cell_id", CELL_TYPE, LINEAGE])
     domains = pd.read_parquet(NOVAE_DOMAINS, columns=["cell_id", DOMAIN_LEVEL])
     joined = (
@@ -174,6 +163,8 @@ def _(
         .reindex(adata.obs["cell_id"].astype(str))
     )
     joined[DOMAIN] = joined[DOMAIN].replace("nan", None)  # Novae left these unassigned
+    niche_names = pd.read_csv(NICHE_SIGNATURES).set_index("domain")["name"]
+    joined[DOMAIN] = joined[DOMAIN].map(niche_names)  # rename domain ids to niche names
 
     def by_size(values, last=()):
         order = list(values.value_counts().index)
@@ -188,6 +179,20 @@ def _(
             *default_categorical_palette(len(categories) - 1),
             "#8c8c8c",
         ]
+    # Order domains by similarity of their cell-type composition, and color them along that order,
+    # so similar domains get similar colors.
+    _share = pd.crosstab(joined[DOMAIN], joined[CELL_TYPE], normalize="index")
+    domain_order = list(_share.index[leaves_list(linkage(_share, "average", metric="braycurtis", optimal_ordering=True))])
+    def _cap_lightness(rgba, cap=0.6):
+        """Darken pale colors (the middle of Spectral) so every domain stays visible."""
+        h, l, s = colorsys.rgb_to_hls(*rgba[:3])
+        return colorsys.hls_to_rgb(h, min(l, cap), s)
+
+    _ramp = dict(zip(domain_order, map(_cap_lightness, plt.cm.Spectral_r(np.linspace(0.05, 0.95, len(domain_order))))))
+    adata.uns[f"{DOMAIN}_colors"] = [
+        *(matplotlib.colors.to_hex(_ramp[d]) for d in adata.obs[DOMAIN].cat.categories[:-1]),
+        "#8c8c8c",
+    ]
     groups = {"cell type": CELL_TYPE, "lineage": LINEAGE, "Novae domain": DOMAIN}
 
     n_typed = int((adata.obs[CELL_TYPE] != UNASSIGNED).sum())
@@ -197,7 +202,7 @@ def _(
         f"**{n_domain:,}** a Novae domain ({DOMAIN_LEVEL}: "
         f"{len(adata.obs[DOMAIN].cat.categories) - 1} domains)."
     )
-    return (groups,)
+    return domain_order, groups
 
 
 @app.cell
@@ -221,7 +226,7 @@ def _(UNASSIGNED, adata, groups, sc):
 
 
 @app.cell
-def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, marker_genes, mo, pd, plt, sc):
+def _(CELL_TYPE, UNASSIGNED, adata, marker_genes, plt, sc):
     dotplot = sc.pl.dotplot(
         adata[adata.obs[CELL_TYPE] != UNASSIGNED],
         marker_genes,
@@ -231,24 +236,48 @@ def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, marker_genes, mo, pd, plt, sc):
         return_fig=True,
     )
     dotplot.make_figure()
-
-    domain_share = pd.crosstab(adata.obs[DOMAIN], adata.obs[CELL_TYPE], normalize="index")
-    domain_share = domain_share.drop(index=UNASSIGNED, columns=UNASSIGNED)
-    fig, (ax_umap, ax_share) = plt.subplots(
-        1, 2, figsize=(17, 6), width_ratios=[1, 1.5], layout="constrained"
-    )
-    sc.pl.embedding(
-        adata, "X_umap", color=CELL_TYPE, size=1, frameon=False, ax=ax_umap, show=False
-    )
-    mesh = ax_share.pcolormesh(domain_share.to_numpy(), cmap="magma")
-    ax_share.set_xticks([x + 0.5 for x in range(domain_share.shape[1])], domain_share.columns, rotation=90)
-    ax_share.set_yticks([y + 0.5 for y in range(domain_share.shape[0])], domain_share.index)
-    ax_share.invert_yaxis()
-    ax_share.set(title="Cell types in each Novae domain", ylabel="domain")
-    fig.colorbar(mesh, ax=ax_share, label="share of the domain's cells", shrink=0.8)
-    annotations_view = mo.vstack([dotplot.fig, fig])
     plt.close("all")
-    annotations_view
+    dotplot.fig
+    return
+
+
+@app.cell
+def _(adata, groups, plt, sc):
+    fig_umaps, axes_umap = plt.subplots(1, 3, figsize=(18, 6), layout="constrained")
+    for _ax, (_name, _key) in zip(axes_umap, groups.items()):
+        sc.pl.embedding(
+            adata, "X_umap", color=_key, title=_name, size=1, frameon=False,
+            legend_fontsize=11, ax=_ax, show=False,
+        )
+    plt.close(fig_umaps)
+    fig_umaps
+    return
+
+
+@app.cell
+def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, domain_order, pd, plt):
+    MIN_SHARE = 0.02  # cell types below this share in every domain are merged into "Other"
+    OTHER = f"Other (<{MIN_SHARE:.0%})"
+
+    domain_counts = pd.crosstab(adata.obs[DOMAIN], adata.obs[CELL_TYPE])
+    domain_counts = domain_counts.drop(index=UNASSIGNED, columns=UNASSIGNED)
+    domain_share = domain_counts.div(domain_counts.sum(axis=1), axis=0)
+
+    palette = dict(zip(adata.obs[CELL_TYPE].cat.categories, adata.uns[f"{CELL_TYPE}_colors"]))
+    palette[OTHER] = "#8c8c8c"
+    common = domain_share.columns[(domain_share >= MIN_SHARE).any()]
+    bar_data = domain_share[common].assign(**{OTHER: domain_share.drop(columns=common).sum(axis=1)})
+    # bars follow the similarity order that also sets the domain colors
+    bar_data = bar_data.loc[domain_order]
+    bar_data.index = [f"{d} (n={domain_counts.loc[d].sum():,})" for d in bar_data.index]
+
+    fig_bars, ax_bars = plt.subplots(figsize=(15, 7), layout="constrained")
+    bar_data.plot.barh(ax=ax_bars, stacked=True, width=0.85, color=[palette[c] for c in bar_data.columns])
+    ax_bars.invert_yaxis()
+    ax_bars.set(xlim=(0, 1), xlabel="share of the domain's cells", title="Cell types in each Novae domain")
+    ax_bars.legend(loc="center left", bbox_to_anchor=(1, 0.5), frameon=False, fontsize=11)
+    plt.close(fig_bars)
+    fig_bars
     return
 
 
@@ -529,7 +558,15 @@ def _(
 
 
 @app.cell(hide_code=True)
-def _(gene_pick, group_pick, landmark_pick, measure_pick, measured, mo, selection_pick):
+def _(
+    gene_pick,
+    group_pick,
+    landmark_pick,
+    measure_pick,
+    measured,
+    mo,
+    selection_pick,
+):
     picks = [landmark_pick, selection_pick, measure_pick]
     if measure_pick.value.startswith("Composition"):
         picks.append(group_pick)
