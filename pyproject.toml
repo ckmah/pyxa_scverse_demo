@@ -10,7 +10,7 @@ dependencies = [
     "huggingface-hub",
     "matplotlib",
     "marimo>=0.25.0",
-    "spatial-rx",
+    "milume>=1.1.0",
 ]
 
 [tool.uv]
@@ -19,5 +19,3 @@ package = false
 [tool.uv.sources]
 # the pyxa reader is on the pyxa-reader branch, pending upstream review; use a local checkout until it is pushed
 spatialdata-io = { path = "../spatialdata-io", editable = true }
-# LandmarksWidget / VolumeCubeWidget for colon_a2.py; windowed cube loading is not released yet
-spatial-rx = { path = "../spatial-rx", editable = true }

@@ -7,7 +7,7 @@ mosaic on one voxel grid. Two per-cell annotations, committed in
 ``annotations/colon_a2/``, are joined onto the table by ``cell_id``: cell types and lineages
 (``cell_typing.parquet``) and Novae spatial domains (``novae_domains.parquet``).
 ``LandmarksWidget(sdata)`` shows them on the map, with cell-type markers in its gene
-picker. Landmarks drawn there feed the ``spatial_rx`` measures (XY geometry, 1 µm z
+picker. Landmarks drawn there feed the ``milume`` measures (XY geometry, 1 µm z
 bins), whose columns go back into ``adata.obs`` for scanpy plots and differential
 expression.
 
@@ -33,7 +33,7 @@ def _():
     import scanpy as sc
     import spatialdata as sd
 
-    from spatial_rx import (
+    from milume import (
         LandmarksWidget,
         along_positions,
         composition,
@@ -41,7 +41,7 @@ def _():
         landmarks_to_geodataframe,
         write_obs,
     )
-    from spatial_rx.categories import default_categorical_palette
+    from milume.categories import default_categorical_palette
 
     ROOT = Path(__file__).resolve().parent
     SDATA_PATH = ROOT / "data" / "colon_a2.sdata.zarr"

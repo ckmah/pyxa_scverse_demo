@@ -63,7 +63,7 @@ per-cell coordinates for scanpy.
    genes) are in the gene picker. **Inspect** (`I`, then click the tissue)
    opens a floating cube of a 300 µm window over the full stack; **Save**
    keeps it as a selection.
-3. **Measure**: `spatial_rx` `composition`, `distances` and `along_positions`
+3. **Measure**: `milume` `composition`, `distances` and `along_positions`
    on the picked landmark, computed in XY with every cell's depth in 1 µm z
    bins. The composition measures (per z bin, vs distance, or along a path,
    with their depth) group cells by cell type, lineage or domain. Gene profiles
@@ -72,10 +72,9 @@ per-cell coordinates for scanpy.
 4. **Selection vs rest**: `obs["in_selection"]` from a widget selection, then
    `sc.tl.rank_genes_groups` against every other cell.
 
-It needs spatial-rx with the Landmarks inspect cube and `z_bin_size` measures
-(on `main`, not released yet),
-installed editable from a sibling checkout (`../spatial-rx`), with its widget
-bundles built, and the `pyxa` reader with optional inputs from the sibling
+It needs [Milume](https://github.com/ckmah/milume) 1.1.0 or later (from PyPI, formerly
+spatial-rx) for the Landmarks inspect cube and `z_bin_size` measures,
+plus the `pyxa` reader with optional inputs from the sibling
 `spatialdata-io` checkout.
 
 1. **Download** the region with `--download` (below): the counts, cell
