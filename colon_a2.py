@@ -17,7 +17,7 @@ expression.
 
 import marimo
 
-__generated_with = "0.25.0"
+__generated_with = "0.25.1"
 app = marimo.App(width="full")
 
 
@@ -117,7 +117,7 @@ def _(SDATA_PATH, sd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## Cell type and spatial domain annotations
+    ## 1. Cell type and spatial domain annotations
 
     - `cell types:` 23 types, including a low-signal QC class
     - `lineage:` 5 coarse groups of cell types
@@ -283,18 +283,35 @@ def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, domain_order, pd, plt):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md("""
-    ## 2 · Landmarks on the tissue
+    mo.vstack(
+        [
+            mo.md("""
+    ## 2. Blurring the lines between analysis and visualization
 
-    The widget reads the table, the 3D cell labels and the nuclear mosaic from
-    the SpatialData, and colors cells by cell type; its color picker switches to
-    `lineage` or `domain`. Its gene picker holds the markers above (packing all
-    1,020 genes for 358k cells takes about 45 s; the markers load in seconds).
+    Ever wished you could point at a structure in your tissue and just *measure* it? The colorectal cancer thick tissue section is 100um x 5 mm × 4 mm, so a 2D plot hides a lot.
 
-    Draw a **shape** around a region, or a **line** / **spline** along an axis
-    (crypt to lumen, muscle to mucosa). **Inspect** (`I`) opens a 300 µm cube
-    of the mosaic over the full stack depth; **Save** keeps it as a selection.
-    """)
+    Introducing  <img src="https://raw.githubusercontent.com/ckmah/milume/6cf9f0660bc78bc7f18bf581f35c98e412af3ce3/assets/logo/favicon.svg" width="20" height="20" style="display:inline; padding: 0; margin:0;" alt="Link"> `milume`: a thinking surface for spatial omics. Milume is a reactive `anywidget` for engaging with spatial omics data, which then drives the analysis that follows, creating an efficient feedback loop for ideation.
+
+    ### Analysis Flow
+    """),
+            mo.mermaid("""
+    %%{init: {"theme": "base", "themeVariables": {"lineColor": "#888888", "textColor": "#888888", "edgeLabelBackground": "transparent", "clusterBkg": "transparent", "clusterBorder": "#888888"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 50, "curve": "basis"}}}%%
+    flowchart LR
+        A("<b>Data</b><br/>AnnData + SpatialData") --> B("<b>Widget</b><br/>LandmarksWidget")
+        B --> C("<b>Outputs</b><br/>landmarks, selections, obs masks")
+        C --> D("<b>Analysis</b><br/>measures and scanpy")
+        D --> B
+        classDef data fill:#6b7280,stroke:#9ca3af,color:#ffffff
+        classDef ui fill:#2563eb,stroke:#60a5fa,color:#ffffff
+        classDef out fill:#d97706,stroke:#fbbf24,color:#ffffff
+        classDef py fill:#16a34a,stroke:#4ade80,color:#ffffff
+        class A data
+        class B ui
+        class C out
+        class D py
+    """),
+        ]
+    )
     return
 
 
@@ -352,15 +369,9 @@ def _(MEASURES, adata, groups, marker_genes, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3 · Measure the landmark, in XY and through depth
+    ## 3. Measure cells and gene expression shifts in 2D and 3D
 
-    Landmarks are 2D, so each measure is computed on the map and holds through
-    the whole section: a shape is a column through the tissue, a line is a
-    wall. Because the table has x, y, z, `distances`, `along_positions` and
-    `composition` also bin every cell's depth at 1 µm (`z_bin_size`), so the
-    same XY measure can be read plane by plane. Composition counts the groups
-    picked in **Group by**. The per-cell values are written to `adata.obs`
-    (`dist_<landmark>`, `path_s`) for scanpy.
+    The landmarks and selections made in the widget can now be accessed by code, allowing the user's knowledge about the tissue sample to drive downstream analysis.
     """)
     return
 
@@ -580,12 +591,11 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 4 · A selection against the rest
+    ## 4. A selection against the rest
 
-    Pick a selection in **Cells** above (a lasso on the map, a promoted
-    neighborhood, or a saved inspect cube). Its membership goes to
-    `adata.obs["in_selection"]` and scanpy ranks the genes that set it apart
-    from every other cell in the section.
+    What makes a region different? Choose a selection in **Cells** above (a lasso, a promoted neighborhood
+    or a saved inspect cube) and scanpy ranks the genes that set it apart from every other cell in the section.
+    Membership is stored in `adata.obs["in_selection"]`, so you can reuse it anywhere.
     """)
     return
 
