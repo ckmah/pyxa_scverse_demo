@@ -5,7 +5,7 @@
 
 import marimo
 
-__generated_with = "0.25.0"
+__generated_with = "0.25.1"
 app = marimo.App(width="medium")
 
 
@@ -41,10 +41,6 @@ def _(mo):
 
     Downloads `xsmall/` from the Hugging Face Hub through fsspec's `hf://` filesystem (provided by
     `huggingface_hub`).
-
-    /// admonition | Tip
-    The `pyxa()` reader will read the zipped OME-Zarr DAPI mosaic in place. No need to unzip.
-    ///
     """)
     return
 
@@ -66,34 +62,6 @@ def _(DATA_DIR, Path, fsspec):
     return (xsmall_dir,)
 
 
-@app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_assigned_gene_v1.csv")
-    return
-
-
-@app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_by_gene_v1.csv")
-    return
-
-
-@app.cell
-def _(xsmall_dir):
-    from spatialdata_io.readers.pyxa import (
-        _get_image,
-    )  # internal function for demo purposes only; use pyxa
-
-    _get_image(xsmall_dir / "mosaic_3d.ome.zarr.zip")
-    return
-
-
-@app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_metadata_v1.csv")
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.vstack(
@@ -102,6 +70,9 @@ def _(mo):
     ## 2. Convert to SpatialData
 
     The reader returns every element in µm in the `global` coordinate system, then writes SpatialData Zarr.
+    /// admonition | Tip\n
+    The `pyxa()` reader will read the zipped OME-Zarr DAPI mosaic in place. No need to unzip.
+    ///
     """),
             mo.mermaid("""
     %%{init: {"theme": "base", "themeVariables": {"lineColor": "#888888", "textColor": "#888888", "edgeLabelBackground": "transparent", "clusterBkg": "transparent", "clusterBorder": "#888888"}, "flowchart": {"nodeSpacing": 25, "rankSpacing": 90, "curve": "basis"}}}%%
@@ -147,6 +118,34 @@ def _(mo):
 
 
 @app.cell
+def _(pl, xsmall_dir):
+    pl.read_csv(xsmall_dir / "cell_assigned_gene_v1.csv")
+    return
+
+
+@app.cell
+def _(pl, xsmall_dir):
+    pl.read_csv(xsmall_dir / "cell_by_gene_v1.csv")
+    return
+
+
+@app.cell
+def _(xsmall_dir):
+    from spatialdata_io.readers.pyxa import (
+        _get_image,
+    )  # internal function for demo purposes only; use pyxa
+
+    _get_image(xsmall_dir / "mosaic_3d.ome.zarr.zip")
+    return
+
+
+@app.cell
+def _(pl, xsmall_dir):
+    pl.read_csv(xsmall_dir / "cell_metadata_v1.csv")
+    return
+
+
+@app.cell
 def _(DATA_DIR, pyxa, xsmall_dir):
     sdata = pyxa(xsmall_dir)
     sdata.write(DATA_DIR / "xsmall.zarr", overwrite=True)
@@ -183,29 +182,58 @@ def _(get_extent, sdata):
 def _(dz, extent, plt, polygons, stack):
     import io
 
-    STEP_UM = 5  # render every 5 µm
+    STEP_UM = 2  # render every 5 µm
     x_lo, x_hi = extent["x"]
     y_lo, y_hi = extent["y"]
     px = (x_hi - x_lo) / stack.shape[2]  # µm per pixel
     py = (y_hi - y_lo) / stack.shape[1]
-    z_idx = range(0, stack.shape[0], round(STEP_UM / dz))  # slice indices to render
+    z_idx = range(
+        0, stack.shape[0], round(STEP_UM / dz)
+    )  # slice indices to render
     y_idx = range(0, stack.shape[1], round(STEP_UM / py))
     x_idx = range(0, stack.shape[2], round(STEP_UM / px))
 
-    TX_COLORS = {True: "#2a78d6", False: "#eb6834"}  # assigned / unassigned transcripts
-    colors = {c: plt.cm.tab20(i % 20) for i, c in enumerate(polygons["cell_id"].unique())}
+    TX_COLORS = {
+        True: "#2a78d6",
+        False: "#eb6834",
+    }  # assigned / unassigned transcripts
+    colors = {
+        c: plt.cm.tab20(i % 20)
+        for i, c in enumerate(polygons["cell_id"].unique())
+    }
 
-
-    def render(img, extent, labels, title, tx, cols, polys=None, cells=(), ylim=None):
+    def render(
+        img, extent, labels, title, tx, cols, polys=None, cells=(), ylim=None
+    ):
         """One frame as PNG bytes: image + cells + transcripts."""
         fig, ax = plt.subplots(figsize=(5, 5), layout="constrained")
         ax.imshow(img, cmap="gray", extent=extent)
         if polys is not None:
-            polys.plot(ax=ax, color=[colors[c] for c in polys["cell_id"]], alpha=0.3, linewidth=0)
+            polys.plot(
+                ax=ax,
+                color=[colors[c] for c in polys["cell_id"]],
+                alpha=0.3,
+                linewidth=0,
+            )
         for lo, hi, z, cid in cells:
-            ax.fill_between([lo, hi], z - dz / 2, z + dz / 2, color=colors[cid], alpha=0.3, linewidth=0)
-        ax.scatter(tx[cols[0]], tx[cols[1]], s=6, c=tx["assigned"].map(TX_COLORS))
-        ax.set(xlim=extent[:2], ylim=ylim or extent[2:], xlabel=labels[0], ylabel=labels[1], title=title)
+            ax.fill_between(
+                [lo, hi],
+                z - dz / 2,
+                z + dz / 2,
+                color=colors[cid],
+                alpha=0.3,
+                linewidth=0,
+            )
+        ax.scatter(
+            tx[cols[0]], tx[cols[1]], s=6, c=tx["assigned"].map(TX_COLORS)
+        )
+        ax.set(
+            xlim=extent[:2],
+            ylim=ylim or extent[2:],
+            xlabel=labels[0],
+            ylabel=labels[1],
+            title=title,
+        )
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -233,11 +261,18 @@ def _(
         z = z_min + (k + 0.5) * dz
         in_plane = lambda df, col: df[(df[col] - z_min) // dz == k]
         return render(
-            stack[k], (x_lo, x_hi, y_hi, y_lo), ("x (µm)", "y (µm)"), f"xy · z = {z:.0f} µm",
-            in_plane(transcripts, "z"), ("x", "y"), polys=in_plane(polygons, "Z_um"),
+            stack[k],
+            (x_lo, x_hi, y_hi, y_lo),
+            ("x (µm)", "y (µm)"),
+            f"xy · z = {z:.0f} µm",
+            in_plane(transcripts, "z"),
+            ("x", "y"),
+            polys=in_plane(polygons, "Z_um"),
         )
 
-    frames_xy = [xy(k) for k in mo.status.progress_bar(z_idx, title="Rendering xy")]
+    frames_xy = [
+        xy(k) for k in mo.status.progress_bar(z_idx, title="Rendering xy", remove_on_exit=True)
+    ]
     return (frames_xy,)
 
 
@@ -261,39 +296,91 @@ def _(
 
     def xz(j):
         y = y_lo + (j + 0.5) * py
-        cut = polygons.geometry.intersection(LineString([(x_lo, y), (x_hi, y)]))  # each cell polygon cut by the slice
+        cut = polygons.geometry.intersection(
+            LineString([(x_lo, y), (x_hi, y)])
+        )  # each cell polygon cut by the slice
         cut = cut[~cut.is_empty]
         return render(
-            stack[:, j, :], (x_lo, x_hi, z_max, z_min), ("x (µm)", "z (µm)"), f"xz · y = {y:.0f} µm",
-            transcripts[(transcripts.y - y).abs() <= 1], ("x", "z"),
-            cells=zip(cut.bounds.minx, cut.bounds.maxx, polygons.Z_um[cut.index], polygons.cell_id[cut.index]),
-            ylim=(polygons.Z_um.max() + dz / 2, polygons.Z_um.min() - dz / 2),  # show whole cells, even past the image
+            stack[:, j, :],
+            (x_lo, x_hi, z_max, z_min),
+            ("x (µm)", "z (µm)"),
+            f"xz · y = {y:.0f} µm",
+            transcripts[(transcripts.y - y).abs() <= 1],
+            ("x", "z"),
+            cells=zip(
+                cut.bounds.minx,
+                cut.bounds.maxx,
+                polygons.Z_um[cut.index],
+                polygons.cell_id[cut.index],
+            ),
+            ylim=(
+                polygons.Z_um.max() + dz / 2,
+                polygons.Z_um.min() - dz / 2,
+            ),  # show whole cells, even past the image
         )
 
-    frames_xz = [xz(j) for j in mo.status.progress_bar(y_idx, title="Rendering xz")]
+    frames_xz = [
+        xz(j) for j in mo.status.progress_bar(y_idx, title="Rendering xz", remove_on_exit=True)
+    ]
     return (frames_xz,)
 
 
 @app.cell
-def _(mo, y_idx, z_idx):
-    plane = mo.ui.slider(
-        0, len(z_idx) - 1, value=len(z_idx) // 2, label="z-plane (5 µm steps)", show_value=False
-    )
-    y_slice = mo.ui.slider(
-        0, len(y_idx) - 1, value=len(y_idx) // 2, label="y-slice (5 µm steps)", show_value=False
-    )
-    return plane, y_slice
+def _(frames_xy, frames_xz):
+    import base64
+
+    import anywidget
+    import traitlets
+
+
+    def _b64(frames):
+        return [base64.b64encode(f).decode() for f in frames]
+
+
+    class SliceViewer(anywidget.AnyWidget):
+        """Two slice browsers; frames are sent once and swapped client-side,
+        so dragging a slider never re-runs a cell (no flicker)."""
+
+        _esm = """
+        function panel(label, frames, start) {
+          const box = document.createElement("div");
+          const slider = document.createElement("input");
+          slider.type = "range"; slider.min = 0; slider.max = frames.length - 1;
+          slider.value = start; slider.style.width = "500px";
+          const img = document.createElement("img");
+          img.width = 500; img.height = 500; img.style.display = "block";
+          const imgs = frames.map((b) => {
+            const i = new Image(); i.src = "data:image/png;base64," + b; return i;
+          });
+          const show = () => { img.src = imgs[slider.value].src; };
+          slider.oninput = show; show();
+          const lab = document.createElement("div");
+          lab.textContent = label;
+          box.append(lab, slider, img);
+          return box;
+        }
+        export default {
+          render({ model, el }) {
+            el.style.cssText = "display:flex;gap:16px;flex-wrap:wrap";
+            const xy = model.get("frames_xy"), xz = model.get("frames_xz");
+            el.append(
+              panel("z-plane (5 µm steps)", xy, xy.length >> 1),
+              panel("y-slice (5 µm steps)", xz, xz.length >> 1),
+            );
+          },
+        };
+        """
+        frames_xy = traitlets.List().tag(sync=True)
+        frames_xz = traitlets.List().tag(sync=True)
+
+
+    viewer = SliceViewer(frames_xy=_b64(frames_xy), frames_xz=_b64(frames_xz))
+    return (viewer,)
 
 
 @app.cell
-def _(frames_xy, mo, plane):
-    mo.vstack([plane, mo.image(frames_xy[plane.value], width=500, height=500)])
-    return
-
-
-@app.cell
-def _(frames_xz, mo, y_slice):
-    mo.vstack([y_slice, mo.image(frames_xz[y_slice.value], width=500, height=500)])
+def _(viewer):
+    viewer
     return
 
 
