@@ -33,6 +33,9 @@ def _(mo):
     structure is a **tube through Z**, not a flat ring. Walls and lumen continue above and below
     the plane you were looking at.
 
+    **Presenter tip:** drop Inspect on a tight nest of epithelial rings in the gland-rich interior
+    (color by **Novae domain** → **Normal crypt (GPX2)** for a sure target), not the broad pale stroma.
+
     [← Back to index](colon_a2.py)
     """)
     return
