@@ -38,39 +38,32 @@ A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
    that plane and the transcripts within half a plane of it drawn on top.
 
-## Colon A2: scverse analysis, steered by landmarks (`colon_a2.py`)
+## Colon A2: why 3D matters (`colon_a2.py`)
 
 A [marimo](https://marimo.io) notebook on a full Region: Glasgow colon H1K,
 Run01 / Analysis02 / A2, published as the `colon/` folder of
 [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) (raw Pyxa
-output, ~30 GB; attribution on the dataset card). The analysis is plain
-scverse; `LandmarksWidget(sdata)` adds landmarks drawn on the tissue as
-per-cell coordinates for scanpy.
+output, ~30 GB; attribution on the dataset card). The narrative contrasts what a
+**flat 2D map implies** with what **3D inspection and measurement** show, for a
+mixed scverse audience (tool builders, cell biologists, pathologists, biomedical
+researchers, platform folks). Plain scverse analysis is steered by
+`LandmarksWidget(sdata)` landmarks and selections.
 
-1. **Cell types and Novae domains**: two per-cell annotation files,
-   committed in `annotations/colon_a2/`, join `adata.obs` by `cell_id`.
-   `cell_typing.parquet` gives `cell_type` (23 types) and `lineage`;
-   `novae_domains.parquet` gives Novae spatial domains at six resolutions, of
-   which the notebook keeps `DOMAIN_LEVEL` (`domain_L7`, 7 domains) as
-   `domain`. Table cells missing from a file are `unassigned`.
-   scanpy normalizes the counts (kept in `layers["counts"]`) and picks two
-   markers per cell type, as a check on the types and for the widget's gene
-   picker. The section shows a dotplot, the Pyxa UMAP, and a heatmap of the
-   cell types in each domain.
-2. **Landmarks**: from the SpatialData the widget finds the cell table, the 3D
-   cell labels and the 3D nuclear image. Cells are colored by cell type, and
-   the widget's color picker switches to lineage or domain. The markers (40
-   genes) are in the gene picker. **Inspect** (`I`, then click the tissue)
-   opens a floating cube of a 300 µm window over the full stack; **Save**
-   keeps it as a selection.
-3. **Measure**: `milume` `composition`, `distances` and `along_positions`
-   on the picked landmark, computed in XY with every cell's depth in 1 µm z
-   bins. The composition measures (per z bin, vs distance, or along a path,
-   with their depth) group cells by cell type, lineage or domain. Gene profiles
-   are scanpy matrixplots over the binned `obs` columns (`dist_<landmark>`,
-   `path_s`, `z_bin`).
-4. **Selection vs rest**: `obs["in_selection"]` from a widget selection, then
-   `sc.tl.rank_genes_groups` against every other cell.
+1. **Trust the labels (short warmup)**: per-cell annotations in
+   `annotations/colon_a2/` join `adata.obs` by `cell_id` (`cell_typing.parquet`
+   for `cell_type` and `lineage`; `novae_domains.parquet` for Novae domains at
+   `DOMAIN_LEVEL`, default `domain_L10`). Two markers per cell type in a dotplot
+   sanity-check the labels before the 3D beats.
+2. **Beat 1 — Rings aren't rings**: on the flat cell-type map, crypt-like
+   **rings**; **Inspect** (`I`, click) and orbit the cube to see **tubes through Z**.
+3. **Beat 2 — Cut like a pathologist**: **Cross-section** in the inspect cube
+   through epithelium vs stroma/lumen — walls stay continuous through depth.
+4. **Beat 3 — Neighbors lie in 2D**: `milume.nearest_distances` on a selection's
+   seed cells — XY neighbors can be microns apart in Z.
+5. **Beat 4 — Stacked niches**: **Composition by depth** (`composition` with 1 µm
+   z bins) vs a flat composition mix; other `milume` measures remain available.
+6. **Beat 5 — See → analyze**: saved inspect cube or lasso → `in_selection` →
+   `sc.tl.rank_genes_groups` differential expression.
 
 It needs [Milume](https://github.com/ckmah/milume) 1.1.0 or later (from PyPI, formerly
 spatial-rx) for the Landmarks inspect cube and `z_bin_size` measures,

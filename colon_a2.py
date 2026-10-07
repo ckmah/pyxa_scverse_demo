@@ -1,15 +1,10 @@
-"""Glasgow colon A2: scverse analysis of a Pyxa SpatialData, steered by landmarks.
+"""Glasgow colon A2: why 3D matters for a thick Pyxa SpatialData section.
 
 Loads the SpatialData that ``build_colon_a2.py`` builds into ``data/`` (not
-committed) from the ``colon/`` folder of the Stellaromics/demo dataset on Hugging Face:
-the full-section cell table in Pyxa µm, the 3D cell labels and Meteor's 3D nuclear
-mosaic on one voxel grid. Two per-cell annotations, committed in
-``annotations/colon_a2/``, are joined onto the table by ``cell_id``: cell types and lineages
-(``cell_typing.parquet``) and Novae spatial domains (``novae_domains.parquet``).
-``LandmarksWidget(sdata)`` shows them on the map, with cell-type markers in its gene
-picker. Landmarks drawn there feed the ``milume`` measures (XY geometry, 1 µm z
-bins), whose columns go back into ``adata.obs`` for scanpy plots and differential
-expression.
+committed) from the ``colon/`` folder of the Stellaromics/demo dataset on Hugging Face.
+Five notebook beats contrast what a flat 2D view implies with what 3D inspection
+and measurement show: rings vs tubes, pathologist cuts, XY vs 3D neighbors,
+composition by depth, and selection-driven DE.
 
     uv run python build_colon_a2.py --download --overwrite
     uv run marimo edit colon_a2.py
@@ -39,6 +34,7 @@ def _():
         composition,
         distances,
         landmarks_to_geodataframe,
+        nearest_distances,
         write_obs,
     )
     from milume.categories import default_categorical_palette
@@ -71,6 +67,7 @@ def _():
         landmarks_to_geodataframe,
         matplotlib,
         mo,
+        nearest_distances,
         np,
         pd,
         plt,
@@ -91,9 +88,18 @@ def _(matplotlib, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Case Study: colorectal cancer
+    # Why 3D matters: Glasgow colon A2
 
-    Here we show a 3D spatial transcriptomics dataset with a 1020-plex gene panel profiling a colorectal cancer thick tissue section acquired on the Stellaromics Pyxa platform. The captured tissue volume is roughly 5mm x 4mm x 0.14mm (xyz).
+    A 1020-plex spatial transcriptomics section (~5 mm × 4 mm × 140 µm) from colorectal
+    cancer tissue on the Stellaromics Pyxa platform. For tool builders, cell biologists,
+    pathologists, biomedical researchers, and platform folks: each beat below contrasts what
+    a **flat 2D map implies** with what **3D inspection and measurement** show.
+
+    1. **Rings aren't rings** — crypt-like rings on the map are tubes through depth.
+    2. **Cut like a pathologist** — cross-sections reveal walls continuous through Z.
+    3. **Neighbors lie in 2D** — XY neighbors can be microns apart in Z.
+    4. **Stacked niches** — composition changes with depth, not one flat mix.
+    5. **See → analyze** — 3D picks the right cells for downstream DE.
 
     /// admonition | Acknowledgements
     **School of Cancer Sciences, University of Glasgow, UK**: Marta Campillo Poveda, Anthony Chalmers, Yoana Doncheva, Joanne Edwards, Andrea Gonzalez Ciscar, **Nigel Jamieson**, Claire Kennedy Dietrich, Ghazal Latif, Assya Legrini, Josefina Marinez Vasquez, Pamela McCall, Mari-Claire McGuigan, Luke McNickle, Tengyu Zhang
@@ -117,16 +123,15 @@ def _(SDATA_PATH, sd):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 1. Cell type and spatial domain annotations
+    ## 1. Trust the labels (short warmup)
 
-    - `cell types:` 23 types, including a low-signal QC class
-    - `lineage:` 5 coarse groups of cell types
-    - `domain:` 10 Novae inferred spatial domains (L10), named by their niche signatures
-
-    All annotations also have an additional "unassigned" class for unlabeled cells.
+    Per-cell annotations join by `cell_id`: 23 cell types, 5 lineages, and 10 Novae
+    spatial domains (L10, named by niche signature). Two markers per typed cell are
+    enough to sanity-check the labels before the 3D beats.
 
     /// admonition | Out of scope
-    Cell typing and spatial domain inference (Novae) results were performed separately and pulled in here to keep this notebook focused on the case study.
+    Cell typing and Novae domain inference were run separately; this notebook focuses on
+    what 3D adds to interpretation.
     ///
     """)
     return
@@ -202,7 +207,7 @@ def _(
         f"**{n_domain:,}** a Novae domain ({DOMAIN_LEVEL}: "
         f"{len(adata.obs[DOMAIN].cat.categories) - 1} domains)."
     )
-    return domain_order, groups
+    return (groups,)
 
 
 @app.cell
@@ -241,77 +246,20 @@ def _(CELL_TYPE, UNASSIGNED, adata, marker_genes, plt, sc):
     return
 
 
-@app.cell
-def _(adata, groups, plt, sc):
-    fig_umaps, axes_umap = plt.subplots(1, 3, figsize=(18, 6), layout="constrained")
-    for _ax, (_name, _key) in zip(axes_umap, groups.items()):
-        sc.pl.embedding(
-            adata, "X_umap", color=_key, title=_name, size=1, frameon=False,
-            legend_fontsize=11, ax=_ax, show=False,
-        )
-    plt.close(fig_umaps)
-    fig_umaps
-    return
-
-
-@app.cell
-def _(CELL_TYPE, DOMAIN, UNASSIGNED, adata, domain_order, pd, plt):
-    MIN_SHARE = 0.02  # cell types below this share in every domain are merged into "Other"
-    OTHER = f"Other (<{MIN_SHARE:.0%})"
-
-    domain_counts = pd.crosstab(adata.obs[DOMAIN], adata.obs[CELL_TYPE])
-    domain_counts = domain_counts.drop(index=UNASSIGNED, columns=UNASSIGNED)
-    domain_share = domain_counts.div(domain_counts.sum(axis=1), axis=0)
-
-    palette = dict(zip(adata.obs[CELL_TYPE].cat.categories, adata.uns[f"{CELL_TYPE}_colors"]))
-    palette[OTHER] = "#8c8c8c"
-    common = domain_share.columns[(domain_share >= MIN_SHARE).any()]
-    bar_data = domain_share[common].assign(**{OTHER: domain_share.drop(columns=common).sum(axis=1)})
-    # bars follow the similarity order that also sets the domain colors
-    bar_data = bar_data.loc[domain_order]
-    bar_data.index = [f"{d} (n={domain_counts.loc[d].sum():,})" for d in bar_data.index]
-
-    fig_bars, ax_bars = plt.subplots(figsize=(15, 7), layout="constrained")
-    bar_data.plot.barh(ax=ax_bars, stacked=True, width=0.85, color=[palette[c] for c in bar_data.columns])
-    ax_bars.invert_yaxis()
-    ax_bars.set(xlim=(0, 1), xlabel="share of the domain's cells", title="Cell types in each Novae domain")
-    ax_bars.legend(loc="center left", bbox_to_anchor=(1, 0.5), frameon=False, fontsize=11)
-    plt.close(fig_bars)
-    fig_bars
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
-    mo.vstack(
-        [
-            mo.md("""
-    ## 2. Blurring the lines between analysis and visualization
+    mo.md("""
+    ## 2. Beat 1 — Rings aren't rings
 
-    Ever wished you could point at a structure in your tissue and just *measure* it? The colorectal cancer thick tissue section is 100um x 5 mm × 4 mm, so a 2D plot hides a lot.
+    On the flat cell-type map below, epithelial crypts read as **rings** or nested arcs.
+    That is what a 2D projection *implies*.
 
-    Introducing  <img src="https://raw.githubusercontent.com/ckmah/milume/6cf9f0660bc78bc7f18bf581f35c98e412af3ce3/assets/logo/favicon.svg" width="20" height="20" style="display:inline; padding: 0; margin:0;" alt="Link"> `milume`: a thinking surface for spatial omics. Milume is a reactive `anywidget` for engaging with spatial omics data, which then drives the analysis that follows, creating an efficient feedback loop for ideation.
+    **Try it:** press **I** (Inspect), click a crypt-like field, and **orbit the cube**.
+    The same structure is a **tube through Z**, not a flat ring — walls and lumen continue
+    above and below the plane you were looking at.
 
-    ### Analysis Flow
-    """),
-            mo.mermaid("""
-    %%{init: {"theme": "base", "themeVariables": {"lineColor": "#888888", "textColor": "#888888", "edgeLabelBackground": "transparent", "clusterBkg": "transparent", "clusterBorder": "#888888"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 50, "curve": "basis"}}}%%
-    flowchart LR
-        A("<b>Data</b><br/>AnnData + SpatialData") --> B("<b>Widget</b><br/>LandmarksWidget")
-        B --> C("<b>Outputs</b><br/>landmarks, selections, obs masks")
-        C --> D("<b>Analysis</b><br/>measures and scanpy")
-        D --> B
-        classDef data fill:#6b7280,stroke:#9ca3af,color:#ffffff
-        classDef ui fill:#2563eb,stroke:#60a5fa,color:#ffffff
-        classDef out fill:#d97706,stroke:#fbbf24,color:#ffffff
-        classDef py fill:#16a34a,stroke:#4ade80,color:#ffffff
-        class A data
-        class B ui
-        class C out
-        class D py
-    """),
-        ]
-    )
+    <img src="https://raw.githubusercontent.com/ckmah/milume/6cf9f0660bc78bc7f18bf581f35c98e412af3ce3/assets/logo/favicon.svg" width="20" height="20" style="display:inline; padding: 0; margin:0;" alt="milume"> `LandmarksWidget` colors cells by type (switch to lineage or domain in the picker) and packs marker genes for the gene picker.
+    """)
     return
 
 
@@ -323,6 +271,22 @@ def _(CELL_TYPE, LandmarksWidget, marker_genes, mo, sdata):
     landmarks = mo.ui.anywidget(widget)
     landmarks
     return (landmarks,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## 3. Beat 2 — Cut like a pathologist
+
+    A single XY plane would break epithelial walls into **arcs** and hide whether stroma
+    and lumen are truly continuous through the section.
+
+    **Try it:** in the Inspect cube, turn on **Cross-section** and sweep through
+    epithelium versus stroma or lumen. Walls that looked like broken rings on the map
+    stay **continuous through depth** — the cut follows tissue, not a flat projection.
+    **Save** the inspect window when you want that volume as a selection for later beats.
+    """)
+    return
 
 
 @app.cell
@@ -351,27 +315,93 @@ def _(get_landmark, get_selection, landmarks, mo, set_landmark, set_selection):
     return landmark_pick, selection_pick
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## 4. Beat 3 — Neighbors lie in 2D
+
+    Lasso and neighborhood tools work on the **flat map**. A cell that looks like a
+    neighbor in XY may sit **microns above or below** its nearest seed in Z.
+
+    Pick a selection in **Cells** (a lasso, promoted neighborhood, or saved inspect cube).
+    `milume.nearest_distances` pairs every cell with its nearest seed in XY and reports
+    the depth offset `dz` to that seed — the gap a 2D view cannot see.
+    """)
+    return
+
+
 @app.cell
-def _(MEASURES, adata, groups, marker_genes, mo):
-    measure_pick = mo.ui.dropdown(
-        options=list(MEASURES), value="Composition by depth", label="Measure"
+def _(
+    CELL_TYPE,
+    adata,
+    landmarks,
+    mo,
+    nearest_distances,
+    np,
+    plt,
+    selection_pick,
+):
+    XY_RADIUS = 20.0  # µm; "looks like a neighbor" on the flat map
+    Z_GAP = 10.0  # µm; meaningful depth separation in this section
+
+    sel = selection_pick.value
+    mo.stop(sel == "all", mo.md("_Pick a selection in **Cells** to use as seeds._"))
+    seeds = list(landmarks.get_obs_names(adata, selection_id=sel))
+    mo.stop(len(seeds) < 1, mo.md(f"_Selection **{sel}** is empty._"))
+    neighbors = nearest_distances(adata, seeds, obs_key=CELL_TYPE)
+    other = neighbors[~neighbors["seed"]]
+    mo.stop(other.empty, mo.md("_No cells outside the seed set to compare._"))
+    lying = other[(other["distance_xy"] < XY_RADIUS) & (other["dz"] > Z_GAP)]
+    close_xy = other[other["distance_xy"] < XY_RADIUS]
+    fig, (ax_scatter, ax_hist) = plt.subplots(1, 2, figsize=(12, 5), layout="constrained")
+    ax_scatter.scatter(other["distance_xy"], other["dz"], s=1, alpha=0.15, color="0.6")
+    if not lying.empty:
+        ax_scatter.scatter(
+            lying["distance_xy"],
+            lying["dz"],
+            s=6,
+            alpha=0.6,
+            label=f"XY < {XY_RADIUS:g} µm and |Δz| > {Z_GAP:g} µm (n={len(lying):,})",
+        )
+    ax_scatter.set(
+        xlabel="distance to nearest seed in XY (µm)",
+        ylabel="|Δz| to that seed (µm)",
+        title="Flat-map neighbors vs depth offset",
     )
-    group_pick = mo.ui.dropdown(options=groups, value="cell type", label="Group by")
-    gene_pick = mo.ui.multiselect(
-        options=list(adata.var_names),
-        value=marker_genes[:8],
-        label="Genes",
-        full_width=True,
+    if not lying.empty:
+        ax_scatter.legend(loc="upper right", fontsize=10)
+    if not close_xy.empty:
+        ax_hist.hist(close_xy["dz"], bins=30, color="steelblue", edgecolor="none")
+        med = float(np.median(close_xy["dz"]))
+        ax_hist.axvline(med, color="orange", ls="--", label=f"median |Δz| = {med:.1f} µm")
+        ax_hist.legend(fontsize=10)
+    ax_hist.set(
+        xlabel="|Δz| (µm)",
+        ylabel="cells",
+        title=f"Depth offset for cells within {XY_RADIUS:g} µm in XY (n={len(close_xy):,})",
     )
-    return gene_pick, group_pick, measure_pick
+    plt.close(fig)
+    mo.vstack(
+        [
+            mo.md(
+                f"**{len(seeds):,}** seed cells from **{sel}**. "
+                f"Among cells within {XY_RADIUS:g} µm in XY, "
+                f"**{len(lying):,}** sit more than {Z_GAP:g} µm above or below their flat-map neighbor."
+            ),
+            fig,
+        ]
+    )
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Measure cells and gene expression shifts in 2D and 3D
+    ## 5. Beat 4 — Stacked niches
 
-    The landmarks and selections made in the widget can now be accessed by code, allowing the user's knowledge about the tissue sample to drive downstream analysis.
+    A single composition bar **collapses depth** into one mix. Draw a shape (or a buffered
+    line) over a region and choose **Composition by depth**: cell-type, lineage, or domain
+    proportions in 1 µm z bins show **stacked niches** — what a flat summary hides.
     """)
     return
 
@@ -538,6 +568,21 @@ def _(
 
 
 @app.cell
+def _(MEASURES, adata, groups, marker_genes, mo):
+    measure_pick = mo.ui.dropdown(
+        options=list(MEASURES), value="Composition by depth", label="Measure"
+    )
+    group_pick = mo.ui.dropdown(options=groups, value="cell type", label="Group by")
+    gene_pick = mo.ui.multiselect(
+        options=list(adata.var_names),
+        value=marker_genes[:8],
+        label="Genes",
+        full_width=True,
+    )
+    return gene_pick, group_pick, measure_pick
+
+
+@app.cell
 def _(
     adata,
     gene_pick,
@@ -591,11 +636,12 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 4. A selection against the rest
+    ## 6. Beat 5 — See → analyze
 
-    What makes a region different? Choose a selection in **Cells** above (a lasso, a promoted neighborhood
-    or a saved inspect cube) and scanpy ranks the genes that set it apart from every other cell in the section.
-    Membership is stored in `adata.obs["in_selection"]`, so you can reuse it anywhere.
+    3D is not just prettier viewing — it is how you **pick the right cells** to analyze.
+    Choose a selection in **Cells** (lasso, promoted neighborhood, or saved inspect cube).
+    Scanpy ranks genes that set it apart from the rest of the section; membership lives in
+    `adata.obs["in_selection"]` for any downstream step.
     """)
     return
 
