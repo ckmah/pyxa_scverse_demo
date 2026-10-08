@@ -5,7 +5,7 @@ output into a [SpatialData](https://spatialdata.scverse.org/) object with the
 experimental `pyxa` reader from
 [spatialdata-io](https://github.com/scverse/spatialdata-io), browse it one
 z-plane at a time (`demo_pyxa.py`), and analyse a full region with scverse
-(`colon_a2.py` and beat notebooks).
+(`colon_a2.py`).
 
 ## Setup
 
@@ -38,35 +38,30 @@ A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
    that plane and the transcripts within half a plane of it drawn on top.
 
-## Colon A2: why 3D matters
+## Colon A2: three 3D vignettes (`colon_a2.py`)
 
 A [marimo](https://marimo.io) demo on a full Region: Glasgow colon H1K,
 Run01 / Analysis02 / A2, published as the `colon/` folder of
 [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) (raw Pyxa
-output, ~30 GB; attribution on the dataset card). The narrative contrasts what a
-**flat 2D map implies** with what **3D inspection and measurement** show, for a
-mixed scverse audience (tool builders, cell biologists, pathologists, biomedical
-researchers, platform folks).
+output, ~30 GB; attribution on the dataset card). One notebook: the Milume
+`LandmarksWidget` comes first, then three short vignettes that each start from a
+landmark or selection made in it and open with a one-line takeaway.
 
-### Layout
+| # | Vignette | Analysis |
+|---|----------|----------|
+| 1 | Shape → Inspect → composition by depth | Cells inside a **shape** landmark (optionally restricted to a saved Inspect cube): flat composition bar next to a 5 µm z-bin heatmap (`milume.composition`). |
+| 2 | Immune cells → neighborhood → composition | The neighborhood promoted in the widget (select cells → Neighbors), or a Python 3D-radius fallback until [milume#92](https://github.com/ckmah/milume/issues/92); `milume.enrichment` of that neighborhood against all other non-seed cells. |
+| 3 | Line + wide buffer → expression gradients | Cells in a **buffered line** projected onto it (along, signed across); binned mean expression of the most rising / falling genes along each axis. |
 
-- **`colon_a2_common.py`** — shared SpatialData load, annotation joins
-  (`cell_typing.parquet`, `novae_domains.parquet`, niche names), and marker-gene
-  picker for `LandmarksWidget(genes=...)`.
-- **`colon_a2.py`** — thin index linking the five beat notebooks.
-- **Beat notebooks** (one runnable moment each):
-
-| Beat | Notebook | Flatten → collapse |
-|------|----------|-------------------|
-| 1 — Rings aren't rings | `colon_a2_beat1_rings.py` | Crypt **rings** → **tubes through Z** (Inspect + orbit) |
-| 2 — Cut like a pathologist | `colon_a2_beat2_cross_section.py` | Single-plane **arcs** → **continuous walls** (Cross-section) |
-| 3 — Neighbors lie in 2D | `colon_a2_beat3_neighbors.py` | Flat-map **neighbors** → microns apart in **Z** (`nearest_distances`) |
-| 4 — Stacked niches | `colon_a2_beat4_niches.py` | Flat composition mix → **composition by depth** (1 µm z bins) |
-| 5 — See → analyze | `colon_a2_beat5_analyze.py` | Viewing → **pick cells** → `in_selection` + `rank_genes_groups` DE |
+The notebook places a demo shape (on the densest normal-crypt field) and a demo
+buffered line (tumour core into stroma) on the map, so every vignette runs out of
+the box; a landmark you draw takes over. Empty selections show instructions rather
+than errors. Helpers (load, annotations, default landmarks, plots) live in
+`colon_a2_common.py`.
 
 It needs [Milume](https://github.com/ckmah/milume) 1.1.0 or later (from PyPI, formerly
-spatial-rx) for the Landmarks inspect cube, `nearest_distances`, and `z_bin_size`
-measures, plus the `pyxa` reader with optional inputs from the sibling
+spatial-rx) for the Landmarks inspect cube and the `composition`, `enrichment`, and
+`along_positions` measures, plus the `pyxa` reader with optional inputs from the sibling
 `spatialdata-io` checkout.
 
 1. **Download** the region with `--download` (below): the counts, cell
@@ -95,14 +90,25 @@ measures, plus the `pyxa` reader with optional inputs from the sibling
    Takes about 8 minutes total (roughly 1.5 min to read, 6 min to write),
    with a peak of roughly 30 GB of memory.
 
-3. **Open** the index or a beat notebook:
+3. **Open** the notebook:
 
    ```bash
    uv run marimo edit colon_a2.py
-   uv run marimo edit colon_a2_beat1_rings.py
    ```
 
-The beat notebooks pass ~40 marker genes to `LandmarksWidget(genes=...)`, so the
-widget packs about 56 MB and each notebook runs in about 10 s; all 1,020
+The notebook passes ~40 marker genes to `LandmarksWidget(genes=...)`, so the
+widget packs about 56 MB and the widget is ready in about 10 s; all 1,020
 genes would be about 1.4 GB and 45 s. The cube reads only the 256×256×32 chunks
 its window covers.
+
+### Smoke test
+
+`tests/smoke_colon_a2.py` runs every cell of `colon_a2.py` headlessly on a small
+synthetic SpatialData built from the committed annotations (40k cells at their
+real positions, niche-driven counts), once with the demo landmarks and once with
+a widget neighborhood selection, and fails on any error. It does not need the
+13 GB store:
+
+```bash
+uv run python tests/smoke_colon_a2.py --html colon_a2_smoke.html
+```

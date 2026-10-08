@@ -1,11 +1,13 @@
-"""Shared Glasgow colon A2 data load and annotation helpers.
+"""Shared Glasgow colon A2 data load, annotation, and vignette helpers.
 
-Used by ``colon_a2.py`` (index) and the five beat notebooks. Assumes
-``data/colon_a2.sdata.zarr`` exists (see ``build_colon_a2.py``).
+Used by ``colon_a2.py``. Assumes ``data/colon_a2.sdata.zarr`` exists (see
+``build_colon_a2.py``); set ``COLON_A2_SDATA`` to read another store (the smoke test
+points it at a small synthetic one).
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib
@@ -17,7 +19,7 @@ import spatialdata as sd
 from milume.categories import default_categorical_palette
 
 ROOT = Path(__file__).resolve().parent
-SDATA_PATH = ROOT / "data" / "colon_a2.sdata.zarr"
+SDATA_PATH = Path(os.environ.get("COLON_A2_SDATA", ROOT / "data" / "colon_a2.sdata.zarr"))
 CELL_TYPING = ROOT / "annotations" / "colon_a2" / "cell_typing.parquet"
 NOVAE_DOMAINS = ROOT / "annotations" / "colon_a2" / "novae_domains.parquet"
 NICHE_SIGNATURES = ROOT / "annotations" / "colon_a2" / "niche_signatures.csv"
@@ -127,3 +129,241 @@ def load_colon_a2(*, normalize: bool = True):
         sc.pp.log1p(adata)
         marker_genes = compute_marker_genes(adata, groups)
     return sdata, adata, groups, marker_genes
+
+
+# --- Default landmarks ----------------------------------------------------------------
+# Each vignette works on a landmark you draw; until you do, it uses one of these, placed
+# from the annotations so the notebook runs end to end (and headlessly) out of the box.
+DEMO_SHAPE = "demo-shape"
+DEMO_LINE = "demo-line"
+INSPECT_UM = 300.0  # the widget's Inspect cube side
+LINE_LENGTH_UM = 600.0
+LINE_BUFFER_UM = 150.0  # half-width: "wide" so the perpendicular axis has room
+CRYPT_DOMAIN = "Normal crypt (GPX2)"
+TUMOUR_DOMAIN = "Tumour core epithelium"
+STROMA_DOMAINS = ("Desmoplastic stroma (POSTN)", "Fibroblast–complement stroma")
+
+
+def _densest_bin(xy: np.ndarray, bin_um: float = 100.0) -> np.ndarray:
+    """Centre of the most populated ``bin_um`` square bin of ``xy``."""
+    ij = np.floor(xy / bin_um).astype(int)
+    keys, counts = np.unique(ij, axis=0, return_counts=True)
+    return (keys[np.argmax(counts)] + 0.5) * bin_um
+
+
+def _domain_xy(adata, names) -> np.ndarray:
+    xy = np.asarray(adata.obsm["spatial"])[:, :2]
+    mask = adata.obs[DOMAIN].isin(list(np.atleast_1d(names))).to_numpy()
+    return xy[mask] if mask.sum() >= 10 else xy
+
+
+def _tumour_to_stroma_line(adata, bin_um: float = 100.0) -> tuple[np.ndarray, np.ndarray]:
+    """A ``LINE_LENGTH_UM`` line from a dense tumour-core bin toward dense stroma, kept on tissue.
+
+    Tries the 10 densest tumour-core bins against stroma bins 300–900 µm away and keeps the
+    line whose 30 sample points land on the most populated bins (so it does not skirt the edge).
+    """
+    xy = np.asarray(adata.obsm["spatial"])[:, :2]
+    occupied = {tuple(k): c for k, c in zip(*np.unique(np.floor(xy / bin_um).astype(int), axis=0, return_counts=True))}
+
+    def dense_bins(points, top):
+        keys, counts = np.unique(np.floor(points / bin_um).astype(int), axis=0, return_counts=True)
+        order = np.argsort(counts)[::-1][:top]
+        return (keys[order] + 0.5) * bin_um
+
+    starts = dense_bins(_domain_xy(adata, TUMOUR_DOMAIN), 10)
+    targets = dense_bins(_domain_xy(adata, STROMA_DOMAINS), 50)
+    t = np.linspace(0, 1, 30)[:, None]
+    best, best_score = None, -1.0
+    for start in starts:
+        for target in targets:
+            dist = float(np.hypot(*(target - start)))
+            if not 300 <= dist <= 900:
+                continue
+            end = start + (target - start) / dist * LINE_LENGTH_UM
+            samples = np.floor((start + t * (end - start)) / bin_um).astype(int)
+            score = float(np.mean([min(occupied.get(tuple(k), 0), 50) for k in samples]))
+            if score > best_score:
+                best, best_score = (start, end), score
+    if best is None:
+        centre = xy.mean(axis=0)
+        return centre - [LINE_LENGTH_UM / 2, 0], centre + [LINE_LENGTH_UM / 2, 0]
+    return best
+
+
+def default_landmarks(adata) -> list[dict]:
+    """A square shape on the densest normal-crypt field and a buffered line from tumour into stroma."""
+    cx, cy = _densest_bin(_domain_xy(adata, CRYPT_DOMAIN))
+    h = INSPECT_UM / 2
+    shape = {
+        "id": DEMO_SHAPE,
+        "type": "shape",
+        "vertices": [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]],
+    }
+    start, end = _tumour_to_stroma_line(adata)
+    line = {
+        "id": DEMO_LINE,
+        "type": "line",
+        "vertices": [start.tolist(), end.tolist()],
+        "buffer_width": LINE_BUFFER_UM,
+        "buffer_side": "both",
+    }
+    return [shape, line]
+
+
+def pick_landmark(landmarks: list[dict], kinds: tuple[str, ...], fallback: str) -> list[str]:
+    """Visible landmark ids of ``kinds``, newest first, with the demo landmark last."""
+    ids = [
+        str(lm["id"])
+        for lm in landmarks
+        if lm.get("type") in kinds and not lm.get("hidden")
+        and (lm.get("type") == "shape" or float(lm.get("buffer_width") or 0) > 0)
+    ]
+    drawn = [i for i in reversed(ids) if not i.startswith("demo-")]
+    return drawn + [i for i in ids if i == fallback]
+
+
+# --- Vignette 1: composition vs z --------------------------------------------------------
+Z_PLOT_BIN = 5.0  # µm; composition-by-depth heatmap bins (1 µm bins are too sparse to read)
+
+
+def composition_by_z(adata, gdf, key: str, obs_names=None, *, z_bin: float = Z_PLOT_BIN, min_cells: int = 10):
+    """Flat composition bar next to a per-``z_bin`` heatmap for one shape landmark.
+
+    Bins with fewer than ``min_cells`` cells are left blank.
+
+    Returns ``(figure, by_z table)`` or ``(None, None)`` when the landmark covers no cells.
+    """
+    from milume import composition
+
+    comp = composition(adata, gdf, obs_key=key, obs_names=obs_names, z_bin_size=z_bin)
+    if comp.empty:
+        return None, None
+    by_z = comp.pivot_table(index="z_bin", columns="group", values="proportion", fill_value=0)
+    n_per_z = comp.groupby("z_bin")["n_total"].first()
+    by_z = by_z.where(n_per_z.reindex(by_z.index) >= min_cells)
+    z_edges = np.arange(comp["z_bin"].min(), comp["z_bin"].max() + 1.5 * z_bin, z_bin)
+    by_z = by_z.reindex(
+        index=z_edges[:-1], columns=[g for g in adata.obs[key].cat.categories if g in by_z.columns]
+    )
+    pooled = comp.groupby("group")["count"].sum().reindex(by_z.columns)
+    height = max(5.0, 0.3 * len(by_z.columns) + 1.5)
+    fig, (ax_bar, ax_z) = plt.subplots(1, 2, figsize=(13, height), width_ratios=[1, 2.2], layout="constrained")
+    ax_bar.barh(pooled.index[::-1], (pooled / pooled.sum())[::-1])
+    ax_bar.set(xlabel="proportion, whole depth (flat summary)", title=f"{int(pooled.sum()):,} cells")
+    edges = np.append(by_z.index.to_numpy(float), by_z.index[-1] + z_bin)
+    mesh = ax_z.pcolormesh(np.arange(len(by_z.columns) + 1), edges, by_z.to_numpy(float), cmap="magma")
+    ax_z.set_xticks(np.arange(len(by_z.columns)) + 0.5, by_z.columns, rotation=90)
+    fig.colorbar(mesh, ax=ax_z, label="proportion in z bin", shrink=0.8)
+    ax_z.set(ylabel="z (µm)", title=f"Composition per {z_bin:g} µm z bin · {gdf['id'].iloc[0]}")
+    plt.close(fig)
+    return fig, by_z
+
+
+# --- Vignette 2: neighborhood composition -------------------------------------------------
+def neighborhood(adata, seeds: np.ndarray, radius: float) -> tuple[np.ndarray, np.ndarray]:
+    """Non-seed cells within ``radius`` µm of any seed, in 3D (XYZ) and on the flat map (XY).
+
+    Python stand-in for the widget's select cells → neighbors (slow today, milume#92).
+    """
+    from scipy.spatial import cKDTree
+
+    xyz = np.asarray(adata.obsm["spatial"], dtype=float)
+    others = ~seeds
+    out = []
+    for dims in (slice(None), slice(0, 2)):
+        d, _ = cKDTree(xyz[seeds, dims]).query(xyz[others, dims], distance_upper_bound=radius)
+        hit = np.zeros(adata.n_obs, dtype=bool)
+        hit[np.flatnonzero(others)[np.isfinite(d)]] = True
+        out.append(hit)
+    return out[0], out[1]
+
+
+def enrichment_plot(table: pd.DataFrame, title: str, max_groups: int = 15):
+    """Horizontal log2 enrichment bars (neighborhood vs background)."""
+    t = table[np.isfinite(table["log2_enrichment"])].head(max_groups).iloc[::-1]
+    fig, ax = plt.subplots(figsize=(8, 0.35 * len(t) + 1.5), layout="constrained")
+    colors = np.where(t["log2_enrichment"] > 0, "#c0392b", "#2e86c1")
+    ax.barh(t["group"], t["log2_enrichment"], color=colors)
+    ax.axvline(0, color="0.5", lw=1)
+    ax.set(xlabel="log2(neighborhood share / background share)", title=title)
+    plt.close(fig)
+    return fig
+
+
+# --- Vignette 3: gradients along and across a line ----------------------------------------
+def line_coordinates(adata, gdf) -> pd.DataFrame:
+    """Cells in a buffered line landmark with ``along`` (µm from start) and signed ``across`` (µm).
+
+    ``across`` > 0 is left of the line's direction of travel.
+    """
+    import shapely
+    from milume import along_positions
+
+    rows = along_positions(adata, gdf, obs_key=CELL_TYPE, z_bin_size=None)
+    if rows.empty:
+        return rows
+    line = gdf.geometry.iloc[0]
+    xy = np.asarray(adata.obsm["spatial"], dtype=float)[rows["point_index"].to_numpy(), :2]
+    along = rows["s"].to_numpy() * line.length
+    eps = min(1.0, line.length / 100)
+    ahead = shapely.get_coordinates(shapely.line_interpolate_point(line, np.minimum(along + eps, line.length)))
+    behind = shapely.get_coordinates(shapely.line_interpolate_point(line, np.maximum(along - eps, 0)))
+    tangent = ahead - behind
+    foot = shapely.get_coordinates(shapely.line_interpolate_point(line, along))
+    side = np.sign(tangent[:, 0] * (xy[:, 1] - foot[:, 1]) - tangent[:, 1] * (xy[:, 0] - foot[:, 0]))
+    return rows.assign(along=along, across=side * rows["distance"].to_numpy())
+
+
+def expression(adata, genes, point_index) -> pd.DataFrame:
+    """Dense normalized expression for ``genes`` at the given row positions."""
+    import scipy.sparse as sp
+
+    x = adata[point_index, list(genes)].X
+    return pd.DataFrame(x.toarray() if sp.issparse(x) else np.asarray(x), columns=list(genes))
+
+
+def gradient_genes(adata, coords: pd.DataFrame, n: int = 4, min_expressing: float = 0.1) -> list[str]:
+    """Genes most correlated (Spearman) with position along the line: half rising, half falling."""
+    import scipy.sparse as sp
+
+    x = adata[coords["point_index"].to_numpy()].X
+    x = x.tocsc() if sp.issparse(x) else np.asarray(x)
+    frac = np.asarray((x > 0).mean(axis=0)).ravel()
+    keep = np.flatnonzero(frac >= min_expressing)
+    if keep.size == 0:
+        return []
+    dense = x[:, keep].toarray() if sp.issparse(x) else x[:, keep]
+    ranks = pd.DataFrame(dense).rank().to_numpy(copy=True)
+    r_along = pd.Series(coords["along"].to_numpy()).rank().to_numpy(copy=True)
+    ranks -= ranks.mean(axis=0)
+    r_along -= r_along.mean()
+    denom = np.sqrt((ranks**2).sum(axis=0) * (r_along**2).sum())
+    rho = np.divide(ranks.T @ r_along, denom, out=np.zeros(keep.size), where=denom > 0)
+    order = np.argsort(rho)
+    names = np.asarray(adata.var_names)[keep]
+    rising, falling = names[order[::-1][: n - n // 2]], names[order[: n // 2]]
+    return [*rising, *falling]
+
+
+def gradient_plot(adata, coords: pd.DataFrame, genes: list[str], *, along_bin=25.0, across_bin=25.0):
+    """Mean expression per bin along the line and across it (perpendicular, signed)."""
+    expr = expression(adata, genes, coords["point_index"].to_numpy())
+    fig, (ax_a, ax_p) = plt.subplots(1, 2, figsize=(12, 4.5), layout="constrained", sharey=True)
+    for ax, col, width, label in [
+        (ax_a, "along", along_bin, "position along line (µm from start)"),
+        (ax_p, "across", across_bin, "signed distance from line (µm, + = left)"),
+    ]:
+        b = (np.floor(coords[col].to_numpy() / width) + 0.5) * width
+        means = expr.groupby(b).mean()
+        n = pd.Series(b).value_counts().reindex(means.index)
+        means = means[n.to_numpy() >= 10]
+        for g in genes:
+            ax.plot(means.index, means[g], marker="o", ms=3, label=g)
+        ax.set(xlabel=label)
+    ax_a.set(ylabel="mean log-normalized expression", title="Along the line")
+    ax_p.set(title="Across the line")
+    ax_p.axvline(0, color="0.5", lw=1, ls="--")
+    ax_p.legend(fontsize=10, loc="best")
+    plt.close(fig)
+    return fig
