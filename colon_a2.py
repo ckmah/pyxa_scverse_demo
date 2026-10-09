@@ -75,7 +75,13 @@ def _(mo, tool_icon):
     _tools = [
         (["mouse-pointer-2"], "Select (V)", "Click a landmark or selection to edit it; drag its vertices."),
         (["hand"], "Move (H)", "Pan and zoom the map."),
-        (["box"], "Inspect (I)", "Click the map to open a 300 µm 3D cube of cells and image there; orbit it."),
+        (["box"], "Inspect mode (I)", "Hover for a live preview, click to place a 300 µm window: a full-resolution "
+         "3D cube of image and cell outlines opens. Drag to orbit, Shift+drag to slide the window, Esc to close; "
+         "Save window keeps it as a selection."),
+        (["locate"], "Probe mode (P)", "Hover a cell to color the map by similarity to it (genes, embedding or "
+         "composition); click to pin, Esc to clear."),
+        (["circle-dot", "grid-2x2"], "Raster view", "Points/raster switch at the top right: draws 8 µm bins instead "
+         "of cells, each summarizing the cells within 24 µm (category mix, gene means or embedding)."),
         (["lasso"], "Lasso (L)", "Draw a free-form selection of cells."),
         (["dot", "pentagon"], "Shape landmark (4)", "From the landmark menu: outline a region. Vignette 1 reads it."),
         (["dot", "move-up-right"], "Line landmark (2)", "From the landmark menu: draw a line. Vignette 2 reads it."),
