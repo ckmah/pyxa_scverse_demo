@@ -131,126 +131,42 @@ def load_colon_a2(*, normalize: bool = True):
     return sdata, adata, groups, marker_genes
 
 
-# --- Default landmarks ----------------------------------------------------------------
-# Each vignette works on a landmark you draw; until you do, it uses one of these, placed
-# from the annotations so the notebook runs end to end (and headlessly) out of the box.
-DEMO_SHAPE = "demo-shape"
-DEMO_LINE = "demo-line"
-INSPECT_UM = 300.0  # the widget's Inspect cube side
-LINE_LENGTH_UM = 600.0
-LINE_BUFFER_UM = 150.0  # half-width: "wide" so the perpendicular axis has room
-TUMOUR_DOMAIN = "Tumour core epithelium"
-STROMA_DOMAINS = ("Desmoplastic stroma (POSTN)", "Fibroblast–complement stroma")
+# --- Widget tools --------------------------------------------------------------------------
+# Lucide glyphs (ISC license) that the Milume toolbar uses, so the intro matches the widget.
+TOOL_ICONS = {
+    "mouse-pointer-2": '<path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"/>',
+    "hand": '<path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
+    "box": '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    "lasso": '<path d="M3.704 14.467a10 8 0 1 1 3.115 2.375"/><path d="M7 22a5 5 0 0 1-2-3.994"/><circle cx="5" cy="16" r="2"/>',
+    "move-up-right": '<path d="M13 5H19V11"/><path d="M19 5L5 19"/>',
+    "pentagon": '<path d="M10.83 2.38a2 2 0 0 1 2.34 0l8 5.74a2 2 0 0 1 .73 2.25l-3.04 9.26a2 2 0 0 1-1.9 1.37H7.04a2 2 0 0 1-1.9-1.37L2.1 10.37a2 2 0 0 1 .73-2.25z"/>',
+    "circle-dot-dashed": '<path d="M10.1 2.18a9.93 9.93 0 0 1 3.8 0"/><path d="M17.6 3.71a9.95 9.95 0 0 1 2.69 2.7"/><path d="M21.82 10.1a9.93 9.93 0 0 1 0 3.8"/><path d="M20.29 17.6a9.95 9.95 0 0 1-2.7 2.69"/><path d="M13.9 21.82a9.94 9.94 0 0 1-3.8 0"/><path d="M6.4 20.29a9.95 9.95 0 0 1-2.69-2.7"/><path d="M2.18 13.9a9.93 9.93 0 0 1 0-3.8"/><path d="M3.71 6.4a9.95 9.95 0 0 1 2.7-2.69"/><circle cx="12" cy="12" r="1"/>',
+    "dot": '<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>',
+}
 
 
-def _domain_xy(adata, names) -> np.ndarray:
-    xy = np.asarray(adata.obsm["spatial"])[:, :2]
-    mask = adata.obs[DOMAIN].isin(list(np.atleast_1d(names))).to_numpy()
-    return xy[mask] if mask.sum() >= 10 else xy
+def tool_icon(name: str, size: int = 18) -> str:
+    """Inline SVG for one widget toolbar glyph."""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+        f'style="display:inline-block;vertical-align:-0.25em">{TOOL_ICONS[name]}</svg>'
+    )
 
 
-def _tumour_to_stroma_line(adata, bin_um: float = 100.0) -> tuple[np.ndarray, np.ndarray]:
-    """A ``LINE_LENGTH_UM`` line from a dense tumour-core bin toward dense stroma, kept on tissue.
+def user_landmarks(landmarks: list[dict], kinds: tuple[str, ...], *, buffered: bool = False) -> list[str]:
+    """Ids of visible landmarks of ``kinds`` drawn in the widget, newest first.
 
-    Tries the 10 densest tumour-core bins against stroma bins 300–900 µm away and keeps the
-    line whose 30 sample points land on the most populated bins (so it does not skirt the edge).
+    ``buffered`` keeps only lines / splines with a buffer width > 0.
     """
-    xy = np.asarray(adata.obsm["spatial"])[:, :2]
-    occupied = {tuple(k): c for k, c in zip(*np.unique(np.floor(xy / bin_um).astype(int), axis=0, return_counts=True))}
-
-    def dense_bins(points, top):
-        keys, counts = np.unique(np.floor(points / bin_um).astype(int), axis=0, return_counts=True)
-        order = np.argsort(counts)[::-1][:top]
-        return (keys[order] + 0.5) * bin_um
-
-    starts = dense_bins(_domain_xy(adata, TUMOUR_DOMAIN), 10)
-    targets = dense_bins(_domain_xy(adata, STROMA_DOMAINS), 50)
-    t = np.linspace(0, 1, 30)[:, None]
-    best, best_score = None, -1.0
-    for start in starts:
-        for target in targets:
-            dist = float(np.hypot(*(target - start)))
-            if not 300 <= dist <= 900:
-                continue
-            end = start + (target - start) / dist * LINE_LENGTH_UM
-            samples = np.floor((start + t * (end - start)) / bin_um).astype(int)
-            score = float(np.mean([min(occupied.get(tuple(k), 0), 50) for k in samples]))
-            if score > best_score:
-                best, best_score = (start, end), score
-    if best is None:
-        centre = xy.mean(axis=0)
-        return centre - [LINE_LENGTH_UM / 2, 0], centre + [LINE_LENGTH_UM / 2, 0]
-    return best
-
-
-NORMAL_EPITHELIUM = ("Crypt stem/TA", "Colonocyte (mature)", "Goblet", "Enteroendocrine")
-TUMOUR_TYPE = "Tumour epithelium"
-
-
-def _normal_crypt_square(adata, size: float = INSPECT_UM, step: float = 25.0, max_tumour: float = 0.05,
-                         min_frac: float = 0.4) -> tuple[float, float]:
-    """Lower-left corner of the ``size`` square richest in normal epithelium.
-
-    Scans squares on a ``step`` grid and keeps those with < ``max_tumour`` Tumour epithelium and
-    at least ``min_frac`` of the densest square's cell count (so depth bins stay populated), then
-    takes the one with the largest share of crypt stem/TA, colonocyte, goblet and enteroendocrine
-    cells. Falls back to the best normal-minus-tumour share when no square is clean enough.
-    """
-    xy = np.asarray(adata.obsm["spatial"], dtype=float)[:, :2]
-    cell_type = adata.obs[CELL_TYPE].astype(str).to_numpy()
-    origin = xy.min(axis=0)
-    cells = np.floor((xy - origin) / step).astype(int)
-    k = int(round(size / step))
-    shape = cells.max(axis=0) + 2
-
-    def window_sums(weights):
-        grid = np.zeros(shape)
-        np.add.at(grid, (cells[:, 0] + 1, cells[:, 1] + 1), weights)
-        c = grid.cumsum(0).cumsum(1)
-        return c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]
-
-    n = window_sums(np.ones(len(xy)))
-    with np.errstate(invalid="ignore", divide="ignore"):
-        normal = window_sums(np.isin(cell_type, NORMAL_EPITHELIUM).astype(float)) / n
-        tumour = window_sums((cell_type == TUMOUR_TYPE).astype(float)) / n
-    dense = n >= min_frac * n.max()
-    score = np.where(dense & (tumour < max_tumour), normal, -np.inf)
-    if not np.isfinite(score).any():
-        score = np.where(dense, normal - tumour, -np.inf)
-    i, j = np.unravel_index(np.argmax(score), score.shape)
-    return float(origin[0] + i * step), float(origin[1] + j * step)
-
-
-def default_landmarks(adata) -> list[dict]:
-    """A square on the cleanest dense normal-crypt field and a buffered line from tumour into stroma."""
-    x0, y0 = _normal_crypt_square(adata)
-    s = INSPECT_UM
-    shape = {
-        "id": DEMO_SHAPE,
-        "type": "shape",
-        "vertices": [[x0, y0], [x0 + s, y0], [x0 + s, y0 + s], [x0, y0 + s]],
-    }
-    start, end = _tumour_to_stroma_line(adata)
-    line = {
-        "id": DEMO_LINE,
-        "type": "line",
-        "vertices": [start.tolist(), end.tolist()],
-        "buffer_width": LINE_BUFFER_UM,
-        "buffer_side": "both",
-    }
-    return [shape, line]
-
-
-def pick_landmark(landmarks: list[dict], kinds: tuple[str, ...], fallback: str) -> list[str]:
-    """Visible landmark ids of ``kinds``, newest first, with the demo landmark last."""
     ids = [
         str(lm["id"])
         for lm in landmarks
-        if lm.get("type") in kinds and not lm.get("hidden")
-        and (lm.get("type") == "shape" or float(lm.get("buffer_width") or 0) > 0)
+        if lm.get("type") in kinds
+        and not lm.get("hidden")
+        and (not buffered or float(lm.get("buffer_width") or 0) > 0)
     ]
-    drawn = [i for i in reversed(ids) if not i.startswith("demo-")]
-    return drawn + [i for i in ids if i == fallback]
+    return ids[::-1]
 
 
 # --- Vignette 1: composition vs z --------------------------------------------------------
@@ -288,37 +204,6 @@ def composition_by_z(adata, gdf, key: str, obs_names=None, *, z_bin: float = Z_P
     ax_z.set(ylabel="z (µm)", title=f"Composition per {z_bin:g} µm z bin · {gdf['id'].iloc[0]}")
     plt.close(fig)
     return fig, by_z
-
-
-# --- Vignette 2: neighborhood composition -------------------------------------------------
-def neighborhood(adata, seeds: np.ndarray, radius: float) -> tuple[np.ndarray, np.ndarray]:
-    """Non-seed cells within ``radius`` µm of any seed, in 3D (XYZ) and on the flat map (XY).
-
-    Python stand-in for the widget's select cells → neighbors (slow today, milume#92).
-    """
-    from scipy.spatial import cKDTree
-
-    xyz = np.asarray(adata.obsm["spatial"], dtype=float)
-    others = ~seeds
-    out = []
-    for dims in (slice(None), slice(0, 2)):
-        d, _ = cKDTree(xyz[seeds, dims]).query(xyz[others, dims], distance_upper_bound=radius)
-        hit = np.zeros(adata.n_obs, dtype=bool)
-        hit[np.flatnonzero(others)[np.isfinite(d)]] = True
-        out.append(hit)
-    return out[0], out[1]
-
-
-def enrichment_plot(table: pd.DataFrame, title: str, max_groups: int = 15):
-    """Horizontal log2 enrichment bars (neighborhood vs background)."""
-    t = table[np.isfinite(table["log2_enrichment"])].head(max_groups).iloc[::-1]
-    fig, ax = plt.subplots(figsize=(8, 0.35 * len(t) + 1.5), layout="constrained")
-    colors = np.where(t["log2_enrichment"] > 0, "#c0392b", "#2e86c1")
-    ax.barh(t["group"], t["log2_enrichment"], color=colors)
-    ax.axvline(0, color="0.5", lw=1)
-    ax.set(xlabel="log2(neighborhood share / background share)", title=title)
-    plt.close(fig)
-    return fig
 
 
 # --- Vignette 3: gradients along and across a line ----------------------------------------

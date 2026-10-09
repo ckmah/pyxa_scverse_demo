@@ -3,12 +3,12 @@
 The real store is ~13 GB and needs ~30 GB of memory to build, so this writes a stand-in
 table from the committed annotations instead: a random subset of cells at their real
 µm positions, with Poisson counts driven by each cell's Novae niche signature genes. It
-then runs every notebook cell twice and fails on any error: once with only the demo
-landmarks (vignette 2 takes its Python fallback), once with a promoted neighborhood
-selection on the widget (vignette 2 reads the widget selection).
+then runs every notebook cell twice and fails on any error: once with no landmarks (each
+vignette shows its drawing instructions), once with a shape and a buffered line injected
+as if drawn in the widget (each vignette plots).
 
-    uv run python tests/smoke_colon_a2.py            # run all cells
-    uv run python tests/smoke_colon_a2.py --html out.html   # also export HTML
+    uv run python tests/smoke_colon_a2.py                    # run all cells
+    uv run python tests/smoke_colon_a2.py --html out.html    # also export HTML (with landmarks)
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import anndata as ad
@@ -27,6 +28,23 @@ import scipy.sparse as sp
 
 ROOT = Path(__file__).resolve().parents[1]
 ANN = ROOT / "annotations" / "colon_a2"
+
+# Landmarks as a user would draw them on colon A2 (µm): a square over clean normal crypt and a
+# line from tumour into stroma with a 150 µm buffer.
+USER_LANDMARKS = [
+    {
+        "id": "user-shape",
+        "type": "shape",
+        "vertices": [[917.0, 2796.0], [1217.0, 2796.0], [1217.0, 3096.0], [917.0, 3096.0]],
+    },
+    {
+        "id": "user-line",
+        "type": "line",
+        "vertices": [[-550.0, 2850.0], [-1138.0, 2732.0]],
+        "buffer_width": 150.0,
+        "buffer_side": "both",
+    },
+]
 
 
 def make_sdata(path: Path, n_cells: int = 40_000, seed: int = 0) -> None:
@@ -58,45 +76,75 @@ def make_sdata(path: Path, n_cells: int = 40_000, seed: int = 0) -> None:
     SpatialData(tables={"rna": TableModel.parse(adata)}).write(path, overwrite=True)
 
 
+@contextmanager
+def drawn(landmarks: list[dict]):
+    """Make every LandmarksWidget start with ``landmarks``, as if the user had drawn them."""
+    import milume
+
+    init = milume.LandmarksWidget.__init__
+
+    def with_landmarks(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        self.landmarks = [dict(lm) for lm in landmarks]
+
+    milume.LandmarksWidget.__init__ = with_landmarks
+    try:
+        yield
+    finally:
+        milume.LandmarksWidget.__init__ = init
+
+
+def run(app, landmarks: list[dict]) -> dict:
+    with drawn(landmarks):
+        _, defs = app.run()
+    return defs
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--html", type=Path, help="also export the rendered notebook here")
+    parser.add_argument("--html", type=Path, help="also export the rendered notebook (with landmarks) here")
     parser.add_argument("--n-cells", type=int, default=40_000)
+    parser.add_argument("--sdata", type=Path, help="run on this store instead of synthetic data")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
-        store = Path(tmp) / "colon_a2_smoke.sdata.zarr"
-        make_sdata(store, args.n_cells)
+        store = args.sdata or Path(tmp) / "colon_a2_smoke.sdata.zarr"
+        if args.sdata is None:
+            make_sdata(store, args.n_cells)
         os.environ["COLON_A2_SDATA"] = str(store)
         sys.path.insert(0, str(ROOT))
         os.chdir(ROOT)
         from colon_a2 import app
 
-        _, defs = app.run()
-        print(f"ran colon_a2.py: {defs['adata'].n_obs:,} cells, {len(defs['landmarks'].landmarks)} landmarks")
+        defs = run(app, [])
+        assert defs["shape_pick"].value == "(none)" and defs["line_pick"].value == "(none)"
+        print(f"no landmarks: ran colon_a2.py on {defs['adata'].n_obs:,} cells; both vignettes show instructions")
 
-        # Second pass: a widget selection standing in for a promoted neighborhood.
-        import milume
+        unbuffered = [dict(USER_LANDMARKS[1], buffer_width=0.0)]
+        defs = run(app, unbuffered)
+        assert defs["line_pick"].value == "(none)"
+        print("unbuffered line: vignette 2 asks for a buffer")
 
-        init = milume.LandmarksWidget.__init__
+        defs = run(app, USER_LANDMARKS)
+        assert defs["shape_pick"].value == "user-shape" and defs["line_pick"].value == "user-line"
+        print("drawn shape + buffered line: both vignettes plot")
 
-        def with_selection(self, *a, **kw):
-            init(self, *a, **kw)
-            picked = np.random.default_rng(1).choice(self._data_x.shape[0], 2_000, replace=False)
-            self.selections = [{"id": "neighborhood-1", "type": "lasso", "point_indices": picked.tolist()}]
-
-        milume.LandmarksWidget.__init__ = with_selection
-        try:
-            _, defs = app.run()
-        finally:
-            milume.LandmarksWidget.__init__ = init
-        assert defs["sel2_pick"].value == "neighborhood-1", defs["sel2_pick"].value
-        print("ran colon_a2.py with a widget neighborhood selection")
         if args.html:
-            subprocess.run(
-                [sys.executable, "-m", "marimo", "export", "html", "colon_a2.py", "-o", str(args.html), "--force", "--no-include-code"],
-                check=True,
-                env=os.environ,
-            )
+            # marimo export runs the notebook in its own kernel, so export a temporary copy whose
+            # widget cell adds the landmarks instead of patching the class.
+            source = (ROOT / "colon_a2.py").read_text()
+            hook = "    landmarks = mo.ui.anywidget(widget)\n"
+            assert hook in source
+            copy = ROOT / "_colon_a2_export.py"
+            copy.write_text(source.replace(hook, f"    widget.landmarks = {USER_LANDMARKS!r}\n" + hook))
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "marimo", "export", "html", str(copy), "-o", str(args.html), "--force",
+                     "--no-include-code"],
+                    check=True,
+                    env=os.environ,
+                )
+            finally:
+                copy.unlink()
             text = Path(args.html).read_text()
             if "marimo-error" in text or "Traceback" in text:
                 sys.exit(f"export of colon_a2.py rendered an error; see {args.html}")

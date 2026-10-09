@@ -38,30 +38,27 @@ A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
    that plane and the transcripts within half a plane of it drawn on top.
 
-## Colon A2: three 3D vignettes (`colon_a2.py`)
+## Spatial analysis of colorectal cancer with 3D context (`colon_a2.py`)
 
 A [marimo](https://marimo.io) demo on a full Region: Glasgow colon H1K,
 Run01 / Analysis02 / A2, published as the `colon/` folder of
 [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) (raw Pyxa
 output, ~30 GB; attribution on the dataset card). One notebook: the Milume
-`LandmarksWidget` comes first, then three short vignettes that each start from a
-landmark or selection made in it and open with a one-line takeaway.
+`LandmarksWidget` comes first, then a short guide to its tools (with the toolbar's
+own icons), then two vignettes that each read the landmarks you draw and open with a
+one-line takeaway.
 
 | # | Vignette | Analysis |
 |---|----------|----------|
-| 1 | Shape → Inspect → composition by depth | Cells inside a **shape** landmark (optionally restricted to a saved Inspect cube): flat composition bar next to a 5 µm z-bin heatmap (`milume.composition`). |
-| 2 | Immune cells → neighborhood → composition | The neighborhood promoted in the widget (select cells → Neighbors), or a Python 3D-radius fallback until [milume#92](https://github.com/ckmah/milume/issues/92); `milume.enrichment` of that neighborhood against all other non-seed cells. |
-| 3 | Line + wide buffer → expression gradients | Cells in a **buffered line** projected onto it (along, signed across); binned mean expression of the most rising / falling genes along each axis. |
+| 1 | Shape → composition by depth | Cells inside a **shape** landmark (optionally restricted to a saved Inspect cube): flat composition bar next to a 5 µm z-bin heatmap (`milume.composition`). |
+| 2 | Line + wide buffer → expression gradients | Cells in a **buffered line** projected onto it (along, signed across); binned mean expression of the most rising / falling genes along each axis. |
 
-The notebook places a demo shape (the densely populated 300 µm square richest in normal crypt epithelium, under 5%
-tumour epithelium; the Inspect cube is centred on it) and a demo
-buffered line (tumour core into stroma) on the map, so every vignette runs out of
-the box; a landmark you draw takes over. Empty selections show instructions rather
-than errors. Helpers (load, annotations, default landmarks, plots) live in
-`colon_a2_common.py`.
+Nothing is pre-drawn: until you draw a shape, or a line with a buffer, each vignette
+shows how to draw one instead of a plot. Helpers (load, annotations, tool icons,
+plots) live in `colon_a2_common.py`.
 
 It needs [Milume](https://github.com/ckmah/milume) 1.1.0 or later (from PyPI, formerly
-spatial-rx) for the Landmarks inspect cube and the `composition`, `enrichment`, and
+spatial-rx) for the Landmarks inspect cube and the `composition` and
 `along_positions` measures, plus the `pyxa` reader with optional inputs from the sibling
 `spatialdata-io` checkout.
 
@@ -106,10 +103,11 @@ its window covers.
 
 `tests/smoke_colon_a2.py` runs every cell of `colon_a2.py` headlessly on a small
 synthetic SpatialData built from the committed annotations (40k cells at their
-real positions, niche-driven counts), once with the demo landmarks and once with
-a widget neighborhood selection, and fails on any error. It does not need the
-13 GB store:
+real positions, niche-driven counts) and fails on any error: with no landmarks,
+with an unbuffered line, and with a shape and a buffered line injected as if drawn
+in the widget. It does not need the 13 GB store; `--sdata` runs it on a real one:
 
 ```bash
 uv run python tests/smoke_colon_a2.py --html colon_a2_smoke.html
+uv run python tests/smoke_colon_a2.py --sdata data/colon_a2.sdata.zarr
 ```
