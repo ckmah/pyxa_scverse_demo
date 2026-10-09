@@ -100,9 +100,11 @@ def _(mo):
     **Takeaway: a flat composition bar averages ~140 µm of tissue; 5 µm z bins show which
     cell types are stacked at which depth inside the same outline.**
 
-    Draw a **shape** around a group of cells (the demo square sits on the densest normal-crypt
-    field). Press **I** and click inside it to open the Inspect cube and orbit the cells you
-    outlined; **Save** the cube to restrict the analysis to it under **Cells**.
+    Draw a **shape** around a group of cells. The demo square sits on the cleanest dense
+    normal-crypt field: the 300 µm square with the highest share of crypt stem/TA, goblet,
+    colonocyte and enteroendocrine cells among those under 5% tumour epithelium; the Inspect cube
+    starts centred on it. Press **I** and click inside a shape to open the Inspect cube and orbit
+    the cells you outlined; **Save** the cube to restrict the analysis to it under **Cells**.
     """)
     return
 

@@ -139,16 +139,8 @@ DEMO_LINE = "demo-line"
 INSPECT_UM = 300.0  # the widget's Inspect cube side
 LINE_LENGTH_UM = 600.0
 LINE_BUFFER_UM = 150.0  # half-width: "wide" so the perpendicular axis has room
-CRYPT_DOMAIN = "Normal crypt (GPX2)"
 TUMOUR_DOMAIN = "Tumour core epithelium"
 STROMA_DOMAINS = ("Desmoplastic stroma (POSTN)", "Fibroblast–complement stroma")
-
-
-def _densest_bin(xy: np.ndarray, bin_um: float = 100.0) -> np.ndarray:
-    """Centre of the most populated ``bin_um`` square bin of ``xy``."""
-    ij = np.floor(xy / bin_um).astype(int)
-    keys, counts = np.unique(ij, axis=0, return_counts=True)
-    return (keys[np.argmax(counts)] + 0.5) * bin_um
 
 
 def _domain_xy(adata, names) -> np.ndarray:
@@ -191,14 +183,52 @@ def _tumour_to_stroma_line(adata, bin_um: float = 100.0) -> tuple[np.ndarray, np
     return best
 
 
+NORMAL_EPITHELIUM = ("Crypt stem/TA", "Colonocyte (mature)", "Goblet", "Enteroendocrine")
+TUMOUR_TYPE = "Tumour epithelium"
+
+
+def _normal_crypt_square(adata, size: float = INSPECT_UM, step: float = 25.0, max_tumour: float = 0.05,
+                         min_frac: float = 0.4) -> tuple[float, float]:
+    """Lower-left corner of the ``size`` square richest in normal epithelium.
+
+    Scans squares on a ``step`` grid and keeps those with < ``max_tumour`` Tumour epithelium and
+    at least ``min_frac`` of the densest square's cell count (so depth bins stay populated), then
+    takes the one with the largest share of crypt stem/TA, colonocyte, goblet and enteroendocrine
+    cells. Falls back to the best normal-minus-tumour share when no square is clean enough.
+    """
+    xy = np.asarray(adata.obsm["spatial"], dtype=float)[:, :2]
+    cell_type = adata.obs[CELL_TYPE].astype(str).to_numpy()
+    origin = xy.min(axis=0)
+    cells = np.floor((xy - origin) / step).astype(int)
+    k = int(round(size / step))
+    shape = cells.max(axis=0) + 2
+
+    def window_sums(weights):
+        grid = np.zeros(shape)
+        np.add.at(grid, (cells[:, 0] + 1, cells[:, 1] + 1), weights)
+        c = grid.cumsum(0).cumsum(1)
+        return c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]
+
+    n = window_sums(np.ones(len(xy)))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        normal = window_sums(np.isin(cell_type, NORMAL_EPITHELIUM).astype(float)) / n
+        tumour = window_sums((cell_type == TUMOUR_TYPE).astype(float)) / n
+    dense = n >= min_frac * n.max()
+    score = np.where(dense & (tumour < max_tumour), normal, -np.inf)
+    if not np.isfinite(score).any():
+        score = np.where(dense, normal - tumour, -np.inf)
+    i, j = np.unravel_index(np.argmax(score), score.shape)
+    return float(origin[0] + i * step), float(origin[1] + j * step)
+
+
 def default_landmarks(adata) -> list[dict]:
-    """A square shape on the densest normal-crypt field and a buffered line from tumour into stroma."""
-    cx, cy = _densest_bin(_domain_xy(adata, CRYPT_DOMAIN))
-    h = INSPECT_UM / 2
+    """A square on the cleanest dense normal-crypt field and a buffered line from tumour into stroma."""
+    x0, y0 = _normal_crypt_square(adata)
+    s = INSPECT_UM
     shape = {
         "id": DEMO_SHAPE,
         "type": "shape",
-        "vertices": [[cx - h, cy - h], [cx + h, cy - h], [cx + h, cy + h], [cx - h, cy + h]],
+        "vertices": [[x0, y0], [x0 + s, y0], [x0 + s, y0 + s], [x0, y0 + s]],
     }
     start, end = _tumour_to_stroma_line(adata)
     line = {

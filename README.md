@@ -53,7 +53,8 @@ landmark or selection made in it and open with a one-line takeaway.
 | 2 | Immune cells → neighborhood → composition | The neighborhood promoted in the widget (select cells → Neighbors), or a Python 3D-radius fallback until [milume#92](https://github.com/ckmah/milume/issues/92); `milume.enrichment` of that neighborhood against all other non-seed cells. |
 | 3 | Line + wide buffer → expression gradients | Cells in a **buffered line** projected onto it (along, signed across); binned mean expression of the most rising / falling genes along each axis. |
 
-The notebook places a demo shape (on the densest normal-crypt field) and a demo
+The notebook places a demo shape (the densely populated 300 µm square richest in normal crypt epithelium, under 5%
+tumour epithelium; the Inspect cube is centred on it) and a demo
 buffered line (tumour core into stroma) on the map, so every vignette runs out of
 the box; a landmark you draw takes over. Empty selections show instructions rather
 than errors. Helpers (load, annotations, default landmarks, plots) live in
