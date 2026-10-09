@@ -196,7 +196,9 @@ def _(CELL_TYPE, FALLBACK, adata, common, enrichment, group2_pick, landmarks, mo
         # Primary path: the neighborhood the user promoted in the widget.
         _hood = np.zeros(adata.n_obs, dtype=bool)
         if sel2_pick.value != FALLBACK:
-            _hood = np.isin(_names, landmarks.get_obs_names(adata, selection_id=sel2_pick.value)) & ~_seeds
+            # Hash join on obs_names: np.isin on object string arrays is quadratic at this size.
+            _picked = landmarks.get_obs_names(adata, selection_id=sel2_pick.value)
+            _hood = adata.obs_names.astype(str).isin(_picked) & ~_seeds
         _note = f" Neighborhood: widget selection **{sel2_pick.value}**."
         if not _hood.any():
             # Fallback until ckmah/milume#92 makes select cells -> neighbors fast enough on this
