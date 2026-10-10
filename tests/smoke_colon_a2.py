@@ -78,20 +78,21 @@ def make_sdata(path: Path, n_cells: int = 40_000, seed: int = 0) -> None:
 
 @contextmanager
 def drawn(landmarks: list[dict]):
-    """Make every LandmarksWidget start with ``landmarks``, as if the user had drawn them."""
+    """Make ``milume.peek`` return a widget that already holds ``landmarks``, as if drawn."""
     import milume
 
-    init = milume.LandmarksWidget.__init__
+    peek = milume.peek
 
-    def with_landmarks(self, *args, **kwargs):
-        init(self, *args, **kwargs)
-        self.landmarks = [dict(lm) for lm in landmarks]
+    def with_landmarks(*args, **kwargs):
+        widget = peek(*args, **kwargs)
+        widget.landmarks = [dict(lm) for lm in landmarks]
+        return widget
 
-    milume.LandmarksWidget.__init__ = with_landmarks
+    milume.peek = with_landmarks
     try:
         yield
     finally:
-        milume.LandmarksWidget.__init__ = init
+        milume.peek = peek
 
 
 def run(app, landmarks: list[dict]) -> dict:
