@@ -10,16 +10,10 @@
 #     "spatialdata",
 #     "fsspec",
 #     "huggingface-hub",
-#     "zarr",
 #     "polars",
-#     "geopandas",
-#     "shapely",
-#     "matplotlib",
-#     "anywidget",
-#     "traitlets",
 # ]
 # ///
-"""Pyxa to SpatialData: read the xsmall crop with the pyxa reader and browse it by z-plane.
+"""Pyxa to SpatialData: read the xsmall crop with the pyxa reader and explore it in Milume.
 
     uv run marimo edit 2_pyxa_spatialdata.py
 """
@@ -36,16 +30,12 @@ def _():
 
     import fsspec
     import marimo as mo
-    import matplotlib.pyplot as plt
-    from spatialdata import get_extent
     import polars as pl
-    import geopandas as gpd
-    import zarr
 
     from spatialdata_io.experimental import pyxa
 
     DATA_DIR = Path(__file__).resolve().parent / "data"
-    return DATA_DIR, Path, fsspec, get_extent, mo, pl, plt, pyxa
+    return DATA_DIR, Path, fsspec, mo, pl, pyxa
 
 
 @app.cell(hide_code=True)
@@ -56,7 +46,7 @@ def _(mo):
     Reads the `xsmall` crop (a 100 × 100 × 100 µm cube, 187 cells) of the
     [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset with the experimental
     `pyxa` reader from [spatialdata-io](https://github.com/scverse/spatialdata-io), writes it to SpatialData
-    Zarr, and browses it one z-plane at a time.
+    Zarr, and explores it in the Milume widget.
 
     ## 1. Download the data
 
@@ -177,11 +167,11 @@ def _(DATA_DIR, pyxa, xsmall_dir):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## Explore in the Milume widget
+    ## 3. Explore in the Milume widget
 
     `milume.peek` opens the SpatialData object in an interactive 3D viewer: pan and zoom the DAPI stack, draw
     landmarks, and open the Inspect view on any region. **Note:** `xsmall` is a small mouse brain subset used here
-    only to walk through the tools; it says nothing about colon biology (see `colon_a2.py` for that).
+    only to walk through the tools; it says nothing about colon biology (see `3_colon_3d_milume.py` for that).
     """)
     return
 
@@ -210,237 +200,6 @@ def _(clustered, mo):
 
     peek = mo.ui.anywidget(milume.peek(clustered, color="leiden"))
     peek
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## 3. Browse data in 3D
-
-    The full-resolution DAPI stack is loaded into memory, and transcripts and z-plane polygons are grouped by the
-    image plane their z falls in, so each slider step only looks up one plane. Transcripts are blue if assigned to
-    a cell and orange if not.
-    """)
-    return
-
-
-@app.cell
-def _(get_extent, sdata):
-    image = sdata["mosaic_image"]["scale0"]["image"]
-    stack = image.isel(c=0).values  # (z, y, x) DAPI planes
-    extent = get_extent(image)
-    z_min, z_max = extent["z"]
-    dz = (z_max - z_min) / len(stack)
-
-    transcripts = sdata["transcripts"].compute()
-    polygons = sdata["cell_boundaries_z"]
-    return dz, extent, polygons, stack, transcripts, z_max, z_min
-
-
-@app.cell
-def _(dz, extent, plt, polygons, stack):
-    import io
-
-    STEP_UM = 2  # render every 5 µm
-    x_lo, x_hi = extent["x"]
-    y_lo, y_hi = extent["y"]
-    px = (x_hi - x_lo) / stack.shape[2]  # µm per pixel
-    py = (y_hi - y_lo) / stack.shape[1]
-    z_idx = range(
-        0, stack.shape[0], round(STEP_UM / dz)
-    )  # slice indices to render
-    y_idx = range(0, stack.shape[1], round(STEP_UM / py))
-    x_idx = range(0, stack.shape[2], round(STEP_UM / px))
-
-    TX_COLORS = {
-        True: "#2a78d6",
-        False: "#eb6834",
-    }  # assigned / unassigned transcripts
-    colors = {
-        c: plt.cm.tab20(i % 20)
-        for i, c in enumerate(polygons["cell_id"].unique())
-    }
-
-    def render(
-        img, extent, labels, title, tx, cols, polys=None, cells=(), ylim=None
-    ):
-        """One frame as PNG bytes: image + cells + transcripts."""
-        fig, ax = plt.subplots(figsize=(5, 5), layout="constrained")
-        ax.imshow(img, cmap="gray", extent=extent)
-        if polys is not None:
-            polys.plot(
-                ax=ax,
-                color=[colors[c] for c in polys["cell_id"]],
-                alpha=0.3,
-                linewidth=0,
-            )
-        for lo, hi, z, cid in cells:
-            ax.fill_between(
-                [lo, hi],
-                z - dz / 2,
-                z + dz / 2,
-                color=colors[cid],
-                alpha=0.3,
-                linewidth=0,
-            )
-        ax.scatter(
-            tx[cols[0]], tx[cols[1]], s=6, c=tx["assigned"].map(TX_COLORS)
-        )
-        ax.set(
-            xlim=extent[:2],
-            ylim=ylim or extent[2:],
-            xlabel=labels[0],
-            ylabel=labels[1],
-            title=title,
-        )
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png")
-        plt.close(fig)
-        return buf.getvalue()
-
-    return py, render, x_hi, x_lo, y_hi, y_idx, y_lo, z_idx
-
-
-@app.cell
-def _(
-    dz,
-    mo,
-    polygons,
-    render,
-    stack,
-    transcripts,
-    x_hi,
-    x_lo,
-    y_hi,
-    y_lo,
-    z_idx,
-    z_min,
-):
-    def xy(k):
-        z = z_min + (k + 0.5) * dz
-        in_plane = lambda df, col: df[(df[col] - z_min) // dz == k]
-        return render(
-            stack[k],
-            (x_lo, x_hi, y_hi, y_lo),
-            ("x (µm)", "y (µm)"),
-            f"xy · z = {z:.0f} µm",
-            in_plane(transcripts, "z"),
-            ("x", "y"),
-            polys=in_plane(polygons, "Z_um"),
-        )
-
-    frames_xy = [
-        xy(k) for k in mo.status.progress_bar(z_idx, title="Rendering xy", remove_on_exit=True)
-    ]
-    return (frames_xy,)
-
-
-@app.cell
-def _(
-    dz,
-    mo,
-    polygons,
-    py,
-    render,
-    stack,
-    transcripts,
-    x_hi,
-    x_lo,
-    y_idx,
-    y_lo,
-    z_max,
-    z_min,
-):
-    from shapely.geometry import LineString
-
-    def xz(j):
-        y = y_lo + (j + 0.5) * py
-        cut = polygons.geometry.intersection(
-            LineString([(x_lo, y), (x_hi, y)])
-        )  # each cell polygon cut by the slice
-        cut = cut[~cut.is_empty]
-        return render(
-            stack[:, j, :],
-            (x_lo, x_hi, z_max, z_min),
-            ("x (µm)", "z (µm)"),
-            f"xz · y = {y:.0f} µm",
-            transcripts[(transcripts.y - y).abs() <= 1],
-            ("x", "z"),
-            cells=zip(
-                cut.bounds.minx,
-                cut.bounds.maxx,
-                polygons.Z_um[cut.index],
-                polygons.cell_id[cut.index],
-            ),
-            ylim=(
-                polygons.Z_um.max() + dz / 2,
-                polygons.Z_um.min() - dz / 2,
-            ),  # show whole cells, even past the image
-        )
-
-    frames_xz = [
-        xz(j) for j in mo.status.progress_bar(y_idx, title="Rendering xz", remove_on_exit=True)
-    ]
-    return (frames_xz,)
-
-
-@app.cell
-def _(frames_xy, frames_xz):
-    import base64
-
-    import anywidget
-    import traitlets
-
-
-    def _b64(frames):
-        return [base64.b64encode(f).decode() for f in frames]
-
-
-    class SliceViewer(anywidget.AnyWidget):
-        """Two slice browsers; frames are sent once and swapped client-side,
-        so dragging a slider never re-runs a cell (no flicker)."""
-
-        _esm = """
-        function panel(label, frames, start) {
-          const box = document.createElement("div");
-          const slider = document.createElement("input");
-          slider.type = "range"; slider.min = 0; slider.max = frames.length - 1;
-          slider.value = start; slider.style.width = "500px";
-          const img = document.createElement("img");
-          img.width = 500; img.height = 500; img.style.display = "block";
-          const imgs = frames.map((b) => {
-            const i = new Image(); i.src = "data:image/png;base64," + b; return i;
-          });
-          const show = () => { img.src = imgs[slider.value].src; };
-          slider.oninput = show; show();
-          const lab = document.createElement("div");
-          lab.textContent = label;
-          box.append(lab, slider, img);
-          return box;
-        }
-        export default {
-          render({ model, el }) {
-            el.style.cssText = "display:flex;gap:16px;flex-wrap:wrap";
-            const xy = model.get("frames_xy"), xz = model.get("frames_xz");
-            el.append(
-              panel("z-plane (5 µm steps)", xy, xy.length >> 1),
-              panel("y-slice (5 µm steps)", xz, xz.length >> 1),
-            );
-          },
-        };
-        """
-        frames_xy = traitlets.List().tag(sync=True)
-        frames_xz = traitlets.List().tag(sync=True)
-
-
-    viewer = SliceViewer(frames_xy=_b64(frames_xy), frames_xz=_b64(frames_xz))
-    return (viewer,)
-
-
-@app.cell
-def _(viewer):
-    viewer
     return
 
 
