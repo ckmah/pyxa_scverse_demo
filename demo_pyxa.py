@@ -1,3 +1,21 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo>=0.25.0",
+#     "milume>=1.2.0",
+#     "spatialdata-io @ git+https://github.com/ckmah/spatialdata-io@pyxa-reader",
+#     "spatialdata",
+#     "fsspec",
+#     "huggingface-hub",
+#     "zarr",
+#     "polars",
+#     "geopandas",
+#     "shapely",
+#     "matplotlib",
+#     "anywidget",
+#     "traitlets",
+# ]
+# ///
 """Pyxa to SpatialData: read the xsmall crop with the pyxa reader and browse it by z-plane.
 
     uv run marimo edit demo_pyxa.py

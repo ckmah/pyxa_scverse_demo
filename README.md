@@ -25,6 +25,15 @@ uv sync
 uv run marimo edit demo_pyxa.py
 ```
 
+Each notebook also declares its dependencies inline (PEP 723 `# /// script`,
+with the reader from `git+https://github.com/ckmah/spatialdata-io@pyxa-reader`),
+so it runs in a marimo sandbox or on [molab](https://molab.marimo.io) without the
+sibling checkout:
+
+```bash
+uvx marimo edit --sandbox demo_pyxa.py
+```
+
 ## Pyxa to SpatialData (`demo_pyxa.py`)
 
 A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
@@ -40,74 +49,32 @@ A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 
 ## Spatial analysis of colorectal cancer with 3D context (`colon_a2.py`)
 
-A [marimo](https://marimo.io) demo on a full Region: Glasgow colon H1K,
-Run01 / Analysis02 / A2, published as the `colon/` folder of
-[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) (raw Pyxa
-output, ~30 GB; attribution on the dataset card). One notebook: the Milume
-`LandmarksWidget` comes first, then a short guide to its tools (with the toolbar's
-own icons), then two vignettes that each read the landmarks you draw and open with a
-one-line takeaway.
+Glasgow colon H1K, Run01 / Analysis02 / A2: the `colon/` folder of
+[Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo)
+(attribution on the dataset card).
 
-| # | Vignette | Analysis |
-|---|----------|----------|
-| 1 | Shape → composition by depth | Cells inside a **shape** landmark (optionally restricted to a saved Inspect cube): flat composition bar next to a 5 µm z-bin heatmap (`milume.composition`). |
-| 2 | Line + wide buffer → expression gradients | Cells in a **buffered line** projected onto it (along, signed across); binned mean expression of the most rising / falling genes along each axis. |
-
-Nothing is pre-drawn: until you draw a shape, or a line with a buffer, each vignette
-shows how to draw one instead of a plot. Helpers (load, annotations, tool icons,
-plots) live in `colon_a2_common.py`.
-
-It needs [Milume](https://github.com/ckmah/milume) 1.1.0 or later (from PyPI, formerly
-spatial-rx) for the Landmarks inspect cube and the `composition` and
-`along_positions` measures, plus the `pyxa` reader with optional inputs from the sibling
-`spatialdata-io` checkout.
-
-1. **Download** the region with `--download` (below): the counts, cell
-   metadata, Pyxa Studio export, segmentation polygons and zipped mosaic from
-   `colon/` into `data/hf/colon/` (about 22 GB; the 7.7 GB of transcripts stay
-   on the Hub). `--source` also takes a Pyxa `Analysis Group` directory instead.
-
-2. **Build** `data/colon_a2.sdata.zarr` (about 13 GB) with one `pyxa(..., labels=True)`
-   call:
-   - `tables/rna`: counts and cell metadata (required) plus `pyxa_studio_v1.csv`
-     for `Cluster` and the 3D UMAP; this script keeps only the cells Pyxa
-     Studio kept, in Pyxa µm. Transcripts are skipped (7.7 GB). `X` holds the
-     raw integer counts (sparse `int64`; the previous build wrote `float32`).
-   - `labels/cell_labels`: the segmentation polygons rasterized onto the 3D
-     mosaic's grid as a `Labels3DModel` (`uint32`, label = the `N` of
-     `Region_N`), all pyramid levels. The table annotates it through
-     `label_id`.
-   - `images/mosaic_image`: Meteor's `mosaic_3d.ome.zarr` (DAPI, `uint8`),
-     read from its zip in place, all pyramid levels, on the same grid as the
-     labels.
+1. **Build** `data/colon_a2.sdata.zarr` (~13 GB; ~8 min, ~30 GB peak memory). `--download`
+   first fetches the five Hub files the build needs into `data/hf/colon/`: **22.5 GB**
+   (12.0 GB mosaic, 9.3 GB segmentation polygons, 1.15 GB counts + metadata + Pyxa Studio
+   export; the 7.7 GB of transcripts stay on the Hub).
 
    ```bash
    uv run python build_colon_a2.py --download --overwrite
    ```
 
-   Takes about 8 minutes total (roughly 1.5 min to read, 6 min to write),
-   with a peak of roughly 30 GB of memory.
-
-3. **Open** the notebook:
+2. **Open** the notebook: the Milume widget (`milume.peek`), a guide to its tools, then
+   two vignettes that read the landmarks you draw: **shape → composition by depth** and
+   **line + wide buffer → expression gradients**.
 
    ```bash
    uv run marimo edit colon_a2.py
    ```
 
-The notebook passes ~40 marker genes to `LandmarksWidget(genes=...)`, so the
-widget packs about 56 MB and the widget is ready in about 10 s; all 1,020
-genes would be about 1.4 GB and 45 s. The cube reads only the 256×256×32 chunks
-its window covers.
+`colon_a2_common.py` holds the helpers: loading the store and joining the cell-type,
+lineage and Novae-domain annotations from `annotations/colon_a2/`, picking the marker
+genes the widget packs, the toolbar icons for the tools guide, and the two vignettes'
+measures and plots.
 
-### Smoke test
-
-`tests/smoke_colon_a2.py` runs every cell of `colon_a2.py` headlessly on a small
-synthetic SpatialData built from the committed annotations (40k cells at their
-real positions, niche-driven counts) and fails on any error: with no landmarks,
-with an unbuffered line, and with a shape and a buffered line injected as if drawn
-in the widget. It does not need the 13 GB store; `--sdata` runs it on a real one:
-
-```bash
-uv run python tests/smoke_colon_a2.py --html colon_a2_smoke.html
-uv run python tests/smoke_colon_a2.py --sdata data/colon_a2.sdata.zarr
-```
+`tests/smoke_colon_a2.py` runs the notebook headlessly on synthetic data built from the
+annotations (no store needed), with and without drawn landmarks; `--sdata` points it at
+a real store.

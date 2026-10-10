@@ -1,3 +1,20 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo>=0.25.0",
+#     "milume>=1.2.0",
+#     "spatialdata-io @ git+https://github.com/ckmah/spatialdata-io@pyxa-reader",
+#     "spatialdata",
+#     "scanpy",
+#     "numpy",
+#     "pandas",
+#     "pyarrow",
+#     "scipy",
+#     "shapely",
+#     "geopandas",
+#     "matplotlib",
+# ]
+# ///
 """Spatial analysis of colorectal cancer with 3D context (Glasgow colon A2).
 
 Loads the SpatialData that ``build_colon_a2.py`` builds into ``data/`` (not committed)
@@ -21,15 +38,16 @@ def _():
 
     import colon_a2_common as common
     from colon_a2_common import CELL_TYPE, apply_mpl_theme, load_colon_a2, tool_icon
-    from milume import LandmarksWidget, landmarks_to_geodataframe
+    import milume
+    from milume import landmarks_to_geodataframe
 
     return (
         CELL_TYPE,
-        LandmarksWidget,
         apply_mpl_theme,
         common,
         landmarks_to_geodataframe,
         load_colon_a2,
+        milume,
         mo,
         tool_icon,
     )
@@ -63,8 +81,8 @@ def _(load_colon_a2):
 
 
 @app.cell(expand_output=True)
-def _(CELL_TYPE, LandmarksWidget, marker_genes, mo, sdata):
-    widget = LandmarksWidget(sdata, color=CELL_TYPE, genes=marker_genes, contrast_limits=(40, 255))
+def _(CELL_TYPE, marker_genes, milume, mo, sdata):
+    widget = milume.peek(sdata, color=CELL_TYPE, genes=marker_genes, contrast_limits=(40, 255))
     landmarks = mo.ui.anywidget(widget)
     landmarks
     return (landmarks,)
