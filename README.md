@@ -2,8 +2,8 @@
 
 ## Workshop agenda
 
-1. **Intro to marimo**: [`1_intro_marimo.py`](1_intro_marimo.py)
-2. **Work with Pyxa data in the SpatialData framework**: [`2_pyxa_spatialdata.py`](2_pyxa_spatialdata.py)
+1. **Intro to marimo**: [`1_intro_marimo.py`](1_intro_marimo.py) · [Open in molab](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/d53f90545f5302d80c81caa19b9012a0eb6ec359/1_intro_marimo.py)
+2. **Work with Pyxa data in the SpatialData framework**: [`2_pyxa_spatialdata.py`](2_pyxa_spatialdata.py) · [Open in molab](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/d53f90545f5302d80c81caa19b9012a0eb6ec359/2_pyxa_spatialdata.py)
 3. **Analysis of 3D spatial omics with Milume**: [`3_colon_3d_milume.py`](3_colon_3d_milume.py)
 
 [marimo](https://marimo.io) notebooks showing how to read Stellaromics Pyxa
