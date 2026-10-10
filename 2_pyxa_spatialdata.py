@@ -2,6 +2,9 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "marimo>=0.25.0",
+#     "milume>=1.3.1",
+#     "scanpy",
+#     "igraph",
 #     # pyxa reader: ckmah/spatialdata-io, pyxa-reader branch, pinned to its head commit
 #     "spatialdata-io @ git+https://github.com/ckmah/spatialdata-io@9a85304fc2f11f04e187f161c399dfb3a7900b3c",
 #     "spatialdata",
@@ -169,6 +172,45 @@ def _(DATA_DIR, pyxa, xsmall_dir):
     sdata.write(DATA_DIR / "xsmall.zarr", overwrite=True)
     sdata
     return (sdata,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Explore in the Milume widget
+
+    `milume.peek` opens the SpatialData object in an interactive 3D viewer: pan and zoom the DAPI stack, draw
+    landmarks, and open the Inspect view on any region. **Note:** `xsmall` is a small mouse brain subset used here
+    only to walk through the tools; it says nothing about colon biology (see `colon_a2.py` for that).
+    """)
+    return
+
+
+@app.cell
+def _(sdata):
+    import scanpy as sc
+
+    # Quick clustering so the widget has a category to colour by (187 cells x 241 genes).
+    _adata = sdata.tables["rna"]
+    _counts = _adata.X.copy()
+    sc.pp.normalize_total(_adata)
+    sc.pp.log1p(_adata)
+    sc.pp.pca(_adata, n_comps=20, random_state=0)
+    sc.pp.neighbors(_adata, random_state=0)
+    sc.tl.leiden(_adata, flavor="igraph", n_iterations=2, resolution=0.8, random_state=0)
+    _adata.obs["leiden"] = _adata.obs["leiden"].astype("category")
+    _adata.layers["counts"] = _counts
+    clustered = sdata
+    return (clustered,)
+
+
+@app.cell(expand_output=True)
+def _(clustered, mo):
+    import milume
+
+    peek = mo.ui.anywidget(milume.peek(clustered, color="leiden"))
+    peek
+    return
 
 
 @app.cell(hide_code=True)
