@@ -18,7 +18,7 @@
 # ///
 """Pyxa to SpatialData: read the xsmall crop with the pyxa reader and browse it by z-plane.
 
-    uv run marimo edit demo_pyxa.py
+    uv run marimo edit 2_pyxa_spatialdata.py
 """
 
 import marimo

@@ -22,7 +22,7 @@ widget comes first; each vignette below reads the landmarks you draw in it and r
 short scverse-style analysis. Helpers live in ``colon_a2_common.py``.
 
     uv run python build_colon_a2.py --download --overwrite
-    uv run marimo edit colon_a2.py
+    uv run marimo edit 3_colon_3d_milume.py
 """
 
 import marimo

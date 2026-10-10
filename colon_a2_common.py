@@ -1,6 +1,6 @@
 """Shared Glasgow colon A2 data load, annotation, and vignette helpers.
 
-Used by ``colon_a2.py``. Assumes ``data/colon_a2.sdata.zarr`` exists (see
+Used by ``3_colon_3d_milume.py``. Assumes ``data/colon_a2.sdata.zarr`` exists (see
 ``build_colon_a2.py``); set ``COLON_A2_SDATA`` to read another store (the smoke test
 points it at a small synthetic one).
 """
