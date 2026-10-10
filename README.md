@@ -26,7 +26,8 @@ uv run marimo edit demo_pyxa.py
 ```
 
 Each notebook also declares its dependencies inline (PEP 723 `# /// script`,
-with the reader from `git+https://github.com/ckmah/spatialdata-io@pyxa-reader`),
+with `demo_pyxa.py`'s reader pinned to a commit of the `pyxa-reader` branch of
+`ckmah/spatialdata-io`),
 so it runs in a marimo sandbox or on [molab](https://molab.marimo.io) without the
 sibling checkout:
 

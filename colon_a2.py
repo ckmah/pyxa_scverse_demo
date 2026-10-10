@@ -3,7 +3,6 @@
 # dependencies = [
 #     "marimo>=0.25.0",
 #     "milume>=1.2.0",
-#     "spatialdata-io @ git+https://github.com/ckmah/spatialdata-io@pyxa-reader",
 #     "spatialdata",
 #     "scanpy",
 #     "numpy",
