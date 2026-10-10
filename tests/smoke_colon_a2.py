@@ -1,4 +1,4 @@
-"""Headless smoke test for ``colon_a2.py`` on a small synthetic SpatialData.
+"""Headless smoke test for ``3_colon_3d_milume.py`` on a small synthetic SpatialData.
 
 The real store is ~13 GB and needs ~30 GB of memory to build, so this writes a stand-in
 table from the committed annotations instead: a random subset of cells at their real
@@ -7,8 +7,8 @@ then runs every notebook cell twice and fails on any error: once with no landmar
 vignette shows its drawing instructions), once with a shape and a buffered line injected
 as if drawn in the widget (each vignette plots).
 
-    uv run python tests/smoke_colon_a2.py                    # run all cells
-    uv run python tests/smoke_colon_a2.py --html out.html    # also export HTML (with landmarks)
+    uv run python tests/smoke_3_colon_3d_milume.py                    # run all cells
+    uv run python tests/smoke_3_colon_3d_milume.py --html out.html    # also export HTML (with landmarks)
 """
 
 from __future__ import annotations
@@ -114,11 +114,12 @@ def main() -> None:
         os.environ["COLON_A2_SDATA"] = str(store)
         sys.path.insert(0, str(ROOT))
         os.chdir(ROOT)
-        from colon_a2 import app
+        from importlib import import_module
+        app = import_module("3_colon_3d_milume").app
 
         defs = run(app, [])
         assert defs["shape_pick"].value == "(none)" and defs["line_pick"].value == "(none)"
-        print(f"no landmarks: ran colon_a2.py on {defs['adata'].n_obs:,} cells; both vignettes show instructions")
+        print(f"no landmarks: ran 3_colon_3d_milume.py on {defs['adata'].n_obs:,} cells; both vignettes show instructions")
 
         unbuffered = [dict(USER_LANDMARKS[1], buffer_width=0.0)]
         defs = run(app, unbuffered)
@@ -132,7 +133,7 @@ def main() -> None:
         if args.html:
             # marimo export runs the notebook in its own kernel, so export a temporary copy whose
             # widget cell adds the landmarks instead of patching the class.
-            source = (ROOT / "colon_a2.py").read_text()
+            source = (ROOT / "3_colon_3d_milume.py").read_text()
             hook = "    landmarks = mo.ui.anywidget(widget)\n"
             assert hook in source
             copy = ROOT / "_colon_a2_export.py"
@@ -148,7 +149,7 @@ def main() -> None:
                 copy.unlink()
             text = Path(args.html).read_text()
             if "marimo-error" in text or "Traceback" in text:
-                sys.exit(f"export of colon_a2.py rendered an error; see {args.html}")
+                sys.exit(f"export of 3_colon_3d_milume.py rendered an error; see {args.html}")
             print(f"wrote {args.html}")
 
 

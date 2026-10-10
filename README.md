@@ -1,11 +1,17 @@
 # pyxa_scverse_demo
 
+## Workshop agenda
+
+1. **Intro to marimo**: [`1_intro_marimo.py`](1_intro_marimo.py)
+2. **Work with Pyxa data in the SpatialData framework**: [`2_pyxa_spatialdata.py`](2_pyxa_spatialdata.py)
+3. **Analysis of 3D spatial omics with Milume**: [`3_colon_3d_milume.py`](3_colon_3d_milume.py)
+
 [marimo](https://marimo.io) notebooks showing how to read Stellaromics Pyxa
 output into a [SpatialData](https://spatialdata.scverse.org/) object with the
 experimental `pyxa` reader from
 [spatialdata-io](https://github.com/scverse/spatialdata-io), browse it one
-z-plane at a time (`demo_pyxa.py`), and analyse a full region with scverse
-(`colon_a2.py`).
+z-plane at a time (`2_pyxa_spatialdata.py`), and analyse a full region with scverse
+(`3_colon_3d_milume.py`).
 
 ## Setup
 
@@ -22,20 +28,20 @@ Then install and open a notebook with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync
-uv run marimo edit demo_pyxa.py
+uv run marimo edit 2_pyxa_spatialdata.py
 ```
 
 Each notebook also declares its dependencies inline (PEP 723 `# /// script`,
-with `demo_pyxa.py`'s reader pinned to a commit of the `pyxa-reader` branch of
+with `2_pyxa_spatialdata.py`'s reader pinned to a commit of the `pyxa-reader` branch of
 `ckmah/spatialdata-io`),
 so it runs in a marimo sandbox or on [molab](https://molab.marimo.io) without the
 sibling checkout:
 
 ```bash
-uvx marimo edit --sandbox demo_pyxa.py
+uvx marimo edit --sandbox 2_pyxa_spatialdata.py
 ```
 
-## Pyxa to SpatialData (`demo_pyxa.py`)
+## Pyxa to SpatialData (`2_pyxa_spatialdata.py`)
 
 A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset.
@@ -48,7 +54,7 @@ A marimo notebook on the `xsmall` crop (100 × 100 × 100 µm) of the
 3. **Browse z-planes**: a slider over DAPI z-planes, with the cell polygons of
    that plane and the transcripts within half a plane of it drawn on top.
 
-## Spatial analysis of colorectal cancer with 3D context (`colon_a2.py`)
+## Spatial analysis of colorectal cancer with 3D context (`3_colon_3d_milume.py`)
 
 Glasgow colon H1K, Run01 / Analysis02 / A2: the `colon/` folder of
 [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo)
@@ -68,7 +74,7 @@ Glasgow colon H1K, Run01 / Analysis02 / A2: the `colon/` folder of
    **line + wide buffer → expression gradients**.
 
    ```bash
-   uv run marimo edit colon_a2.py
+   uv run marimo edit 3_colon_3d_milume.py
    ```
 
 `colon_a2_common.py` holds the helpers: loading the store and joining the cell-type,

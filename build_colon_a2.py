@@ -1,4 +1,4 @@
-"""Build the Glasgow colon A2 SpatialData for ``colon_a2.py`` with spatialdata-io's ``pyxa`` reader.
+"""Build the Glasgow colon A2 SpatialData for ``3_colon_3d_milume.py`` with spatialdata-io's ``pyxa`` reader.
 
 ``--download`` fetches the region from the ``colon/`` folder of the
 `Stellaromics/demo <https://huggingface.co/datasets/Stellaromics/demo>`_ dataset into
