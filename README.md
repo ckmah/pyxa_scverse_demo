@@ -4,8 +4,8 @@ marimo notebooks for the Stellaromics workshop on 3D spatial omics with Pyxa, Sp
 
 | Notebook | What it covers | Run |
 | --- | --- | --- |
-| [`1_intro_marimo.py`](1_intro_marimo.py) | Intro to marimo: reactive cells, UI elements and markdown | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/ade9347d93f16e252a2fdbc09f71038cbf54eaa2/1_intro_marimo.py) |
-| [`2_pyxa_spatialdata.py`](2_pyxa_spatialdata.py) | Read Pyxa output into SpatialData and explore it in the Milume widget | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/ade9347d93f16e252a2fdbc09f71038cbf54eaa2/2_pyxa_spatialdata.py) |
+| [`1_intro_marimo.py`](1_intro_marimo.py) | Intro to marimo: reactive cells, UI elements and markdown | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/c007d1497398657584bd3c59e04f104993023174/1_intro_marimo.py) |
+| [`2_pyxa_spatialdata.py`](2_pyxa_spatialdata.py) | Read Pyxa output into SpatialData and explore it in the Milume widget | [![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/stellaromics/pyxa_scverse_demo/blob/c007d1497398657584bd3c59e04f104993023174/2_pyxa_spatialdata.py) |
 | [`3_colon_3d_milume.py`](3_colon_3d_milume.py) | Analysis of 3D spatial omics in colorectal cancer with Milume | Run on your own machine; needs ~30 GB of memory and a ~22 GB download |
 
 ## Run the colon notebook locally

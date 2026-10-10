@@ -13,7 +13,7 @@
 #     "polars",
 # ]
 # ///
-"""Pyxa to SpatialData: read the xsmall crop with the pyxa reader and explore it in Milume.
+"""Pyxa to SpatialData: read the small crop with the pyxa reader and explore it in Milume.
 
     uv run marimo edit 2_pyxa_spatialdata.py
 """
@@ -43,14 +43,14 @@ def _(mo):
     mo.md("""
     # 🔬 Pyxa 3D spatial omics → SpatialData
 
-    Reads the `xsmall` crop (a 100 × 100 × 100 µm cube, 187 cells) of the
+    Reads the `small` crop (a ~1,320 × 450 × 130 µm slab of mouse brain, 4,372 cells, ~290 MB) of the
     [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) dataset with the experimental
     `pyxa` reader from [spatialdata-io](https://github.com/scverse/spatialdata-io), writes it to SpatialData
     Zarr, and explores it in the Milume widget.
 
     ## 1. Download the data
 
-    Downloads `xsmall/` from the Hugging Face Hub through fsspec's `hf://` filesystem (provided by
+    Downloads `small/` from the Hugging Face Hub through fsspec's `hf://` filesystem (provided by
     `huggingface_hub`).
     """)
     return
@@ -58,19 +58,19 @@ def _(mo):
 
 @app.cell
 def _(DATA_DIR, Path, fsspec):
-    xsmall_dir = DATA_DIR / "xsmall"
-    xsmall_dir.mkdir(parents=True, exist_ok=True)
+    small_dir = DATA_DIR / "small"
+    small_dir.mkdir(parents=True, exist_ok=True)
 
     fs = fsspec.filesystem("hf")
     for remote_path in fs.ls(
-        "datasets/Stellaromics/demo/xsmall", detail=False
+        "datasets/Stellaromics/demo/small", detail=False
     ):
-        local_path = xsmall_dir / Path(remote_path).name
+        local_path = small_dir / Path(remote_path).name
         if not local_path.exists():
             fs.get(remote_path, str(local_path))
 
-    sorted(p.name for p in xsmall_dir.iterdir())
-    return (xsmall_dir,)
+    sorted(p.name for p in small_dir.iterdir())
+    return (small_dir,)
 
 
 @app.cell(hide_code=True)
@@ -129,37 +129,37 @@ def _(mo):
 
 
 @app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_assigned_gene_v1.csv")
+def _(pl, small_dir):
+    pl.read_csv(small_dir / "cell_assigned_gene_v1.csv")
     return
 
 
 @app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_by_gene_v1.csv")
+def _(pl, small_dir):
+    pl.read_csv(small_dir / "cell_by_gene_v1.csv")
     return
 
 
 @app.cell
-def _(xsmall_dir):
+def _(small_dir):
     from spatialdata_io.readers.pyxa import (
         _get_image,
     )  # internal function for demo purposes only; use pyxa
 
-    _get_image(xsmall_dir / "mosaic_3d.ome.zarr.zip")
+    _get_image(small_dir / "mosaic_3d.ome.zarr.zip")
     return
 
 
 @app.cell
-def _(pl, xsmall_dir):
-    pl.read_csv(xsmall_dir / "cell_metadata_v1.csv")
+def _(pl, small_dir):
+    pl.read_csv(small_dir / "cell_metadata_v1.csv")
     return
 
 
 @app.cell
-def _(DATA_DIR, pyxa, xsmall_dir):
-    sdata = pyxa(xsmall_dir)
-    sdata.write(DATA_DIR / "xsmall.zarr", overwrite=True)
+def _(DATA_DIR, pyxa, small_dir):
+    sdata = pyxa(small_dir)
+    sdata.write(DATA_DIR / "small.zarr", overwrite=True)
     sdata
     return (sdata,)
 
@@ -170,7 +170,7 @@ def _(mo):
     ## 3. Explore in the Milume widget
 
     `milume.peek` opens the SpatialData object in an interactive 3D viewer: pan and zoom the DAPI stack, draw
-    landmarks, and open the Inspect view on any region. **Note:** `xsmall` is a small mouse brain subset used here
+    landmarks, and open the Inspect view on any region. **Note:** `small` is a mouse brain subset used here
     only to walk through the tools; it says nothing about colon biology (see `3_colon_3d_milume.py` for that).
     """)
     return
@@ -180,12 +180,12 @@ def _(mo):
 def _(sdata):
     import scanpy as sc
 
-    # Quick clustering so the widget has a category to colour by (187 cells x 241 genes).
+    # Quick clustering so the widget has a category to colour by (4,372 cells x 241 genes).
     _adata = sdata.tables["rna"]
     _counts = _adata.X.copy()
     sc.pp.normalize_total(_adata)
     sc.pp.log1p(_adata)
-    sc.pp.pca(_adata, n_comps=20, random_state=0)
+    sc.pp.pca(_adata, n_comps=30, random_state=0)
     sc.pp.neighbors(_adata, random_state=0)
     sc.tl.leiden(_adata, flavor="igraph", n_iterations=2, resolution=0.8, random_state=0)
     _adata.obs["leiden"] = _adata.obs["leiden"].astype("category")
