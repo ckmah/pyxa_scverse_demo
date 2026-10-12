@@ -32,14 +32,10 @@ app = marimo.App(width="full")
 
 
 @app.cell(hide_code=True)
-def _():
-    import marimo as _mo
-
-    _mo.md(
-        r"""
-        > **molab:** Switch from **Preview** to **Server** (*Run on server*). The widget needs a live kernel to download data and render; Preview alone will not run this notebook.
-        """
-    )
+def _(mo):
+    mo.md(r"""
+    > **molab:** Switch from **Preview** to **Server** (*Run on server*). The widget needs a live kernel to download data and render; Preview alone will not run this notebook.
+    """)
     return
 
 
