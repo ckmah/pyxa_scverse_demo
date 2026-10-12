@@ -3232,7 +3232,7 @@ requires-dist = [
     { name = "huggingface-hub" },
     { name = "marimo", specifier = ">=0.25.0" },
     { name = "matplotlib" },
-    { name = "milume", specifier = ">=1.3.4" },
+    { name = "milume", specifier = "==1.3.4" },
     { name = "spatialdata-io", editable = "../spatialdata-io" },
 ]
 
