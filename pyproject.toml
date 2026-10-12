@@ -10,7 +10,7 @@ dependencies = [
     "huggingface-hub",
     "matplotlib",
     "marimo>=0.25.0",
-    "milume>=1.1.0",
+    "milume==1.3.4",
 ]
 
 [tool.uv]
