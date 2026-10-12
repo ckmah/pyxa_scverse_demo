@@ -20,7 +20,7 @@
 
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
@@ -158,7 +158,7 @@ def _(pl, small_dir):
 
 @app.cell
 def _(DATA_DIR, pyxa, small_dir):
-    sdata = pyxa(small_dir)
+    sdata = pyxa(small_dir, labels=True)
     sdata.write(DATA_DIR / "small.zarr", overwrite=True)
     sdata
     return (sdata,)
@@ -180,16 +180,13 @@ def _(mo):
 def _(sdata):
     import scanpy as sc
 
-    # Quick clustering so the widget has a category to colour by (4,372 cells x 241 genes).
     _adata = sdata.tables["rna"]
-    _counts = _adata.X.copy()
-    sc.pp.normalize_total(_adata)
     sc.pp.log1p(_adata)
-    sc.pp.pca(_adata, n_comps=30, random_state=0)
+    sc.pp.pca(_adata, random_state=0)
     sc.pp.neighbors(_adata, random_state=0)
+    sc.tl.umap(_adata, random_state=0)
     sc.tl.leiden(_adata, flavor="igraph", n_iterations=2, resolution=0.8, random_state=0)
     _adata.obs["leiden"] = _adata.obs["leiden"].astype("category")
-    _adata.layers["counts"] = _counts
     clustered = sdata
     return (clustered,)
 
