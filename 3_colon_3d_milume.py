@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "marimo>=0.25.0",
-#     "milume==1.3.4",
+#     "milume==1.3.5",
 #     "spatialdata",
 #     "scanpy",
 #     "numpy",
