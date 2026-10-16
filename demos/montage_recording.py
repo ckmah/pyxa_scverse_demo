@@ -50,8 +50,8 @@ def _(mo):
     1. **Opener.** Default points view; slow drift (scroll-zoom or pan).
     2. **Inspect.** Inspect tool, hover, click to place the cube, slide
        the cross-section one way on 2 axes, orbit, zoom.
-       *Tip: right-click Labels → opacity 0.6 (1.3.5 opens at 0.40).
-       Points is off by default; leave it off.*
+       *Labels stay at the 0.40 default; Points is off by default,
+       leave it off.*
     3. **Landmark.** Zoom to the top-left crypts, draw one shape
        around them (right-click the landmark tool → Shape), then Buffer in
        the context toolbar → turn off "Both sides" → drag the slider.
