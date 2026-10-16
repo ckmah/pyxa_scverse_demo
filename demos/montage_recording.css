@@ -1,0 +1,8 @@
+/* Two columns that fit side by side on a 1920x1080 screen. */
+div[class*="group/column"] {
+  width: 860px !important;
+  max-width: 860px !important;
+}
+div[class*="group/column"] [data-testid="column-frame"] {
+  width: 100% !important;
+}

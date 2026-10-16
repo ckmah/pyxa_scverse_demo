@@ -18,3 +18,11 @@ uv run marimo edit 3_colon_3d_milume.py
 The build downloads ~22.5 GB from the Hub, writes a ~13 GB SpatialData store to `data/`, and peaks at ~30 GB of memory.
 
 Data: [Stellaromics/demo](https://huggingface.co/datasets/Stellaromics/demo) on Hugging Face.
+
+## Montage recording notebook
+
+[`demos/montage_recording.py`](demos/montage_recording.py) is a ready-to-record notebook for the Milume montage (milume 1.3.5, colon A2, dark theme, large code font, shot list inside). From the repo root, with the store at `data/colon_a2.sdata.zarr` (or `COLON_A2_SDATA` set):
+
+```
+uvx marimo edit --sandbox demos/montage_recording.py
+```
