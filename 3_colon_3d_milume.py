@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "marimo>=0.25.0",
-#     "milume==1.3.5",
+#     "milume==2.0.0",
 #     "spatialdata",
 #     "scanpy",
 #     "numpy",
@@ -179,7 +179,7 @@ def _(adata, common, group1_pick, landmarks, landmarks_to_geodataframe, mo, sel1
             kind="info",
         )
     else:
-        _cells = None if sel1_pick.value == "all" else landmarks.get_obs_names(adata, selection_id=sel1_pick.value)
+        _cells = None if sel1_pick.value == "all" else landmarks.get_obs_names(sel1_pick.value)
         _fig, _ = common.composition_by_z(adata, _gdf, group1_pick.value, _cells)
         _out = _fig if _fig is not None else mo.callout(
             mo.md(f"**{shape_pick.value}** covers no cells{'' if _cells is None else ' in ' + sel1_pick.value}. "
